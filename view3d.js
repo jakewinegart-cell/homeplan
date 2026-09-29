@@ -1572,13 +1572,19 @@ function createView3D(container) {
   function addRoofGable(group, w, d, wallH, pitch, overhang, roofMat, tieIn) {
     const oh = overhang / 12;
     const W = w + oh * 2, D = d + oh * 2;
-    let rise = (W / 2) * pitch;
-    if (tieIn === 'flat' || tieIn === 'low-slope') rise = Math.max(0.5, W * 0.04);
+    // Rise from BUILDING half-span (not eave-to-eave) so the roof surface at the
+    // wall line sits on the top plate. Overhang tip continues the slope downward.
+    const alongZ = D >= W;
+    const buildingHalf = alongZ ? (w / 2) : (d / 2);
+    let rise = Math.max(0.15, buildingHalf * pitch);
+    if (tieIn === 'flat' || tieIn === 'low-slope') rise = Math.max(0.5, Math.max(w, d) * 0.04);
     if (tieIn === 'dormer') rise = Math.max(rise, 3);
     const thick = ROOF_THICK;
-    const eaveY = wallH;
-    const ridgeY = wallH + rise;
-    const alongZ = D >= W;
+    const plateY = wallH; // top plate / bearing
+    const ridgeY = plateY + rise;
+    // Tip drops oh*pitch along the same slope (skip drop for flat/low-slope)
+    const tipDrop = (tieIn === 'flat' || tieIn === 'low-slope') ? 0 : oh * pitch;
+    const eaveY = plateY - tipDrop;
     function plane(corners) {
       const verts = new Float32Array(corners.flat());
       const geo = new THREE.BufferGeometry();
@@ -1628,16 +1634,19 @@ function createView3D(container) {
     }
   }
 
-  /** Hip roof: 2 main slopes + 2 triangular hips (4 planes). Pitch drives rise from half the short span. */
+  /** Hip roof: 2 main slopes + 2 triangular hips (4 planes). Pitch drives rise from half the short BUILDING span. */
   function addRoofHip(group, w, d, wallH, pitch, overhang, roofMat, tieIn) {
     const oh = overhang / 12;
     const W = w + oh * 2, D = d + oh * 2;
-    const halfMin = Math.min(W, D) / 2;
-    let rise = halfMin * pitch;
-    if (tieIn === 'flat' || tieIn === 'low-slope') rise = Math.max(0.5, halfMin * 0.08);
+    // Rise from building half-span so wall-line sits on top plate; tip drops along slope.
+    const buildingHalfMin = Math.min(w, d) / 2;
+    let rise = Math.max(0.15, buildingHalfMin * pitch);
+    if (tieIn === 'flat' || tieIn === 'low-slope') rise = Math.max(0.5, buildingHalfMin * 0.08);
     if (tieIn === 'dormer') rise = Math.max(rise, 3);
-    const eaveY = wallH;
-    const ridgeY = wallH + rise;
+    const plateY = wallH;
+    const tipDrop = (tieIn === 'flat' || tieIn === 'low-slope') ? 0 : oh * pitch;
+    const eaveY = plateY - tipDrop;
+    const ridgeY = plateY + rise;
     const thick = ROOF_THICK;
     function addFace(corners, indices) {
       const verts = new Float32Array(corners.flat());
@@ -2121,7 +2130,10 @@ function createView3D(container) {
       // Detect rooms that can use continuous extrude (uniform height, closed rect)
       // Stud mode skips solid extrude — open framing on every wall instead.
       const extrudedWallIds = new Set();
-      let maxWallH = wallH;
+      // Plate height for roof = max of walls that actually carry the addition roof
+      // (per-wall heightFt). Do NOT seed with store.wall_height_ft — that leaves the
+      // roof floating when Guidance height > drawn wall heights.
+      let maxWallH = 0;
 
       if (!showStuds) {
         (plan.rooms || []).forEach((room) => {
@@ -2145,7 +2157,7 @@ function createView3D(container) {
           const linked = (plan.walls || []).filter((w) => w.roomId === room.id);
           if (!linked.length) return;
           const heights = linked.map((w) => (w.heightFt != null && w.heightFt > 0) ? w.heightFt : wallH);
-          const h0 = Math.max(...heights, wallH);
+          const h0 = Math.max(...heights);
           if (h0 > maxWallH) maxWallH = h0;
           if (showDims) {
             makeLabel('H ' + fmtFt(h0), room.x + room.w - ox + 0.6, h0 / 2, room.y - oz - 0.6, labelGroup, 2.4);
@@ -2259,11 +2271,13 @@ function createView3D(container) {
         );
       }
 
+      if (!(maxWallH > 0)) maxWallH = wallH;
       focusY = maxWallH * 0.4;
 
       if (store.show_roof !== false) {
         // Roof footprint = addition rooms/walls only (existing house keeps its own roof).
         // Extra size beyond walls comes solely from eave_overhang_in (modest, clamped).
+        // Vertical: eave/plate at maxWallH (addition top plate); pier lift raises group later.
         const ab = additionBounds(plan) || b;
         const roofW = Math.max(ab.w, 1);
         const roofD = Math.max(ab.d, 1);

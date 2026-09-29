@@ -1,3 +1,6 @@
+**3D / roof height (`?v=roof2`):** addition roof plate sits on wall top plate — rise from building half-span (not eave-to-eave), overhang tip drops along pitch; plate height = max addition wall `heightFt` (not Guidance-only when walls differ); pier lift still raises roof with structure. Footprint remains addition-only + clamped eave from roof1.
+
+
 # HomePlan — Remodel & Additions (prototype)
 
 Friendly homeowner-facing remodel / addition planner. Vanilla HTML/CSS/JS — no build step.
