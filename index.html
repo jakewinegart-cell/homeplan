@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>HomePlan — Remodel & Additions</title>
-  <link rel="stylesheet" href="styles.css?v=roof3" />
+  <link rel="stylesheet" href="styles.css?v=openings1" />
 </head>
 <body>
   <div id="app">
@@ -141,6 +141,10 @@
               <span class="fixture-subtype-label" id="fixture-subtype-label">Type</span>
               <div class="fixture-chip-row" id="fixture-subtype-chips" role="group" aria-label="Fixture subtype"></div>
             </div>
+            <div id="win-size-bar" class="fixture-subtype-bar" hidden>
+              <span class="fixture-subtype-label">Window size</span>
+              <div class="fixture-chip-row" id="win-size-chips" role="group" aria-label="Window size preset"></div>
+            </div>
             <div id="fixture-tip" class="fixture-tip" hidden></div>
             <div id="draw-done-fab" class="draw-done-fab" hidden>
               <button type="button" class="btn btn-accent" id="btn-draw-done-fab">Done</button>
@@ -261,6 +265,12 @@
         <div class="view3d-layout">
           <div class="view3d-topbar">
             <span class="view3d-label" id="view3d-disclaimer">Conceptual visualization — not construction documents.</span>
+            <div id="view3d-openings-bar" class="view3d-openings-bar" role="group" aria-label="Add openings">
+              <button type="button" class="btn btn-sm btn-ghost view3d-add-btn" id="view3d-add-window" title="Tap a wall to place a window">+ Window</button>
+              <button type="button" class="btn btn-sm btn-ghost view3d-add-btn" id="view3d-add-door" title="Tap a wall to place a door">+ Door</button>
+              <div id="view3d-size-chips" class="view3d-size-chips" hidden role="group" aria-label="Opening size"></div>
+              <button type="button" class="btn btn-sm btn-ghost" id="view3d-add-cancel" hidden title="Cancel place mode">Cancel</button>
+            </div>
             <div id="view3d-edit-bar" class="view3d-edit-bar" hidden>
               <span id="view3d-edit-label">Editing window</span>
               <button type="button" class="btn btn-sm btn-accent" id="view3d-edit-done">Done</button>
@@ -293,11 +303,12 @@
                 <button type="button" class="v3d-insp-close" id="v3d-win-close" aria-label="Close">×</button>
               </div>
               <p class="muted small">Drag to slide · handles resize · Esc or Done to exit</p>
+              <div id="v3d-insp-presets" class="view3d-size-chips v3d-insp-presets" role="group" aria-label="Size presets"></div>
               <label class="v3d-field">Width (ft)
-                <input type="number" id="v3d-win-w" min="1.5" max="20" step="0.25" />
+                <input type="number" id="v3d-win-w" min="0.5" max="20" step="0.25" />
               </label>
               <label class="v3d-field">Height (ft)
-                <input type="number" id="v3d-win-h" min="1.5" max="12" step="0.25" />
+                <input type="number" id="v3d-win-h" min="1" max="12" step="0.25" />
               </label>
               <label class="v3d-field">Sill (ft)
                 <input type="number" id="v3d-win-sill" min="0" max="8" step="0.25" />
@@ -313,9 +324,9 @@
             <p>Draw walls or rooms on the <em>Plan</em> tab, or answer Guidance (addition footprint) for a parametric preview.</p>
             <button type="button" class="btn btn-accent" id="btn-goto-plan">Go to Plan</button>
           </div>
-          <div class="view3d-hint muted small">
+          <div class="view3d-hint muted small" id="view3d-hint">
             Conceptual visualization — not construction documents. Materials and lighting are illustrative. Not a bid, permit set, or product sample.
-            · Drag to orbit · Scroll to zoom · Hold / right-click a part to name it · Double-click opening to edit · Dims / Studs / Floor framing / Shadows toggles
+            · <strong>+ Window / + Door</strong> then tap a wall to place · Double-tap opening to edit/move · Drag to orbit · Hold a part to name it · Dims / Studs / Floor framing / Shadows
           </div>
         </div>
       </section>
@@ -549,11 +560,11 @@
     }
   }
   </script>
-  <script src="walkthrough-data.js?v=roof3"></script>
-  <script src="guide-data.js?v=roof3"></script>
-  <script src="floorplan.js?v=roof3"></script>
-  <script src="wizard-data.js?v=roof3"></script>
-  <script type="module" src="view3d.js?v=roof3"></script>
-  <script src="app.js?v=roof3"></script>
+  <script src="walkthrough-data.js?v=openings1"></script>
+  <script src="guide-data.js?v=openings1"></script>
+  <script src="floorplan.js?v=openings1"></script>
+  <script src="wizard-data.js?v=openings1"></script>
+  <script type="module" src="view3d.js?v=openings1"></script>
+  <script src="app.js?v=openings1"></script>
 </body>
 </html>

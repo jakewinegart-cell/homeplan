@@ -39,6 +39,12 @@
 
   const DEFAULT_DOOR_WIDTH_FT = 32 / 12;  // 2′8″
   const DEFAULT_DOOR_HEIGHT_FT = 80 / 12; // 6′8″
+  const WIN_SIZE_PRESETS = [
+    { id: '3x4', label: '3×4', wIn: 36, hIn: 48 },
+    { id: '3x5', label: '3×5', wIn: 36, hIn: 60 },
+    { id: '4x4', label: '4×4', wIn: 48, hIn: 48 },
+    { id: '8x24', label: '8×24', wIn: 8, hIn: 24, title: 'Narrow 8 in × 2 ft' },
+  ];
   const SHARED_EDGE_EPS_FT = 0.25;
   const SHARED_EDGE_MIN_OVERLAP_FT = 2.0;
 
@@ -215,6 +221,7 @@
       windows: [],    // {id, wallId, t, widthFt, heightFt, sillFt}
       fixtures: [],   // counters/cabinets/sinks/outlets — see FIXTURE_DEFS
       activeFixtureId: 'counter_base',
+      activeWinPresetId: '3x4',
       rooflines: [],  // {id, points:[{x,y},...]} legacy freehand ridges
       roofPitch: null,       // numeric rise/run (e.g. 6/12)
       roofPitchLabel: null,  // '6/12'
@@ -1732,9 +1739,12 @@
         const near = findWallNear(raw, 1.5);
         if (near) {
           pushHistory();
+          const preset = WIN_SIZE_PRESETS.find((x) => x.id === state.activeWinPresetId) || WIN_SIZE_PRESETS[0];
+          const widthFt = (preset && preset.wIn) ? preset.wIn / 12 : DEFAULT_WIN_WIDTH_FT;
+          const heightFt = (preset && preset.hIn) ? preset.hIn / 12 : DEFAULT_WIN_HEIGHT_FT;
           state.windows.push(normalizeWindow({
             id: uid('win'), wallId: near.wall.id, t: near.t,
-            widthFt: DEFAULT_WIN_WIDTH_FT, heightFt: DEFAULT_WIN_HEIGHT_FT, sillFt: DEFAULT_WIN_SILL_FT,
+            widthFt, heightFt, sillFt: DEFAULT_WIN_SILL_FT,
           }));
           state.selected = { type: 'window', id: state.windows[state.windows.length - 1].id };
           notify();
@@ -2397,8 +2407,9 @@
       const type = opts.type || 'window';
       let widthFt = Number(opts.w_ft);
       let heightFt = Number(opts.h_ft);
-      let sillFt = 2.5;
+      let sillFt = opts.sill_ft != null ? Number(opts.sill_ft) : 2.5;
       if (type === 'door' || type === 'large') sillFt = 0;
+      else if (!(sillFt >= 0)) sillFt = DEFAULT_WIN_SILL_FT;
       if (!(widthFt > 0)) {
         if (type === 'door') widthFt = opts.door_type === 'sliding' || opts.door_type === 'french' ? 6 : 3;
         else if (type === 'large') widthFt = 8;
@@ -2594,8 +2605,16 @@
       resize,
       isEmpty,
       getTool() { return state.tool; },
+      getActiveWinPresetId() { return state.activeWinPresetId || '3x4'; },
+      setActiveWinPresetId(id) {
+        const ok = WIN_SIZE_PRESETS.some((p) => p.id === id);
+        state.activeWinPresetId = ok ? id : '3x4';
+        if (hooks.onToolChange) hooks.onToolChange(state.tool, { activeWinPresetId: state.activeWinPresetId });
+        return state.activeWinPresetId;
+      },
+      WIN_SIZE_PRESETS,
     };
   }
 
-  global.HomePlanFloor = { createFloorPlan, FIXTURE_DEFS, FIXTURE_TOOL_OPTIONS, FIXTURE_TOOL_DEFAULTS };
+  global.HomePlanFloor = { createFloorPlan, FIXTURE_DEFS, FIXTURE_TOOL_OPTIONS, FIXTURE_TOOL_DEFAULTS, WIN_SIZE_PRESETS };
 })(window);

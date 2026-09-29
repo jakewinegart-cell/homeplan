@@ -190,6 +190,24 @@
           if (!floor) return;
           if (win && win.id) floor.selectById('window', win.id);
         },
+        onOpeningAdd(opts) {
+          if (!floor || !floor.addOpeningOnWall) return null;
+          suppressing3dRebuild = true;
+          let win = null;
+          try {
+            win = floor.addOpeningOnWall(opts);
+            if (els.saveStatus) els.saveStatus.textContent = 'Unsaved changes — click Save to keep them.';
+          } finally {
+            suppressing3dRebuild = false;
+          }
+          planDirtyFor3d = true;
+          rebuild3D(true);
+          return win;
+        },
+        onToast(msg) {
+          if (typeof showToast === 'function') showToast(msg);
+          else if (els.saveStatus) els.saveStatus.textContent = msg;
+        },
       });
     }
   }
@@ -204,6 +222,19 @@
     view3d.buildFromPlan(plan, store, { preserveCamera: !!prevSel });
     view3d.show();
     if (prevSel && view3d.selectWindow) view3d.selectWindow(prevSel, { silent: true });
+    // Keep 3D add-palette defaults in sync with Guidance D18b presets
+    if (view3d.setAddPreset && store) {
+      if (store.opening_preset_win_w_in && store.opening_preset_win_h_in) {
+        const w = store.opening_preset_win_w_in, h = store.opening_preset_win_h_in;
+        const id = (w === 8 && h === 24) ? '8x24' : (w === 36 && h === 60) ? '3x5' : (w === 48 && h === 48) ? '4x4' : '3x4';
+        view3d.setAddPreset('window', { id, w, h });
+      }
+      if (store.opening_preset_door_w_in && store.opening_preset_door_h_in) {
+        const w = store.opening_preset_door_w_in, h = store.opening_preset_door_h_in;
+        const id = (w === 72 && h === 84) ? 'sliding_6x7' : (w === 96 && h === 84) ? 'sliding_8x7' : '36x80';
+        view3d.setAddPreset('door', { id, w, h });
+      }
+    }
     planDirtyFor3d = false;
   }
 
@@ -240,6 +271,41 @@
       btn.addEventListener('click', () => {
         if (floor.setActiveFixture) floor.setActiveFixture(fid);
         syncFixtureSubtypeBar(tool, fid);
+      });
+      chips.appendChild(btn);
+    });
+  }
+
+  function syncWinSizeBar(tool) {
+    const bar = document.getElementById('win-size-bar');
+    const chips = document.getElementById('win-size-chips');
+    if (!bar || !chips || !floor) return;
+    if (tool !== 'window') {
+      bar.hidden = true;
+      chips.innerHTML = '';
+      return;
+    }
+    const presets = (window.HomePlanFloor && window.HomePlanFloor.WIN_SIZE_PRESETS)
+      || (floor.WIN_SIZE_PRESETS)
+      || [
+        { id: '3x4', label: '3×4', wIn: 36, hIn: 48 },
+        { id: '3x5', label: '3×5', wIn: 36, hIn: 60 },
+        { id: '4x4', label: '4×4', wIn: 48, hIn: 48 },
+        { id: '8x24', label: '8×24', wIn: 8, hIn: 24 },
+      ];
+    bar.hidden = false;
+    const cur = (floor.getActiveWinPresetId && floor.getActiveWinPresetId()) || '3x4';
+    chips.innerHTML = '';
+    presets.forEach((p) => {
+      if (!p.wIn) return;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'fixture-chip' + (p.id === cur ? ' active' : '');
+      btn.textContent = p.label;
+      btn.title = p.title || p.label;
+      btn.addEventListener('click', () => {
+        if (floor.setActiveWinPresetId) floor.setActiveWinPresetId(p.id);
+        syncWinSizeBar('window');
       });
       chips.appendChild(btn);
     });
@@ -305,6 +371,7 @@
           btn.classList.toggle('active', t === tool);
         });
         syncFixtureSubtypeBar(tool, extra && extra.activeFixtureId);
+        syncWinSizeBar(tool);
       },
       onDrawChrome(info) {
         const show = !!(info && info.canFinish);
@@ -312,7 +379,10 @@
         const fab = document.getElementById('draw-done-fab');
         if (barBtn) barBtn.hidden = !show;
         if (fab) fab.hidden = !show;
-        if (info && info.tool) syncFixtureSubtypeBar(info.tool, info.activeFixtureId);
+        if (info && info.tool) {
+          syncFixtureSubtypeBar(info.tool, info.activeFixtureId);
+          syncWinSizeBar(info.tool);
+        }
       },
       onFixturePlaced(fx) {
         showFixtureTip(fx);

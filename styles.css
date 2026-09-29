@@ -1266,3 +1266,41 @@ button { cursor: pointer; }
   }
   .wizard-fab { bottom: 0.75rem; right: 0.75rem; font-size: 0.85rem; padding: 0.6rem 0.9rem; }
 }
+
+
+/* 3D openings add palette (windows / doors) */
+.view3d-openings-bar {
+  display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.35rem;
+  margin-left: 0.5rem; max-width: min(560px, 100%);
+}
+.view3d-add-btn {
+  min-height: 2.1rem; min-width: 5.2rem; font-weight: 650;
+  border-radius: 999px; padding: 0.35rem 0.75rem;
+}
+.view3d-add-btn.active {
+  background: rgba(47, 111, 106, 0.16);
+  border-color: rgba(47, 111, 106, 0.45);
+  color: var(--accent);
+}
+.view3d-size-chips {
+  display: inline-flex; flex-wrap: wrap; gap: 0.3rem; align-items: center;
+}
+.view3d-size-chips[hidden] { display: none !important; }
+.view3d-size-chip {
+  border: 1px solid var(--border); background: var(--surface);
+  border-radius: 999px; padding: 0.32rem 0.65rem;
+  font-size: 0.72rem; font-weight: 650; color: var(--ink-muted);
+  cursor: pointer; min-height: 2rem; white-space: nowrap;
+}
+.view3d-size-chip.active {
+  background: rgba(47, 111, 106, 0.14);
+  border-color: rgba(47, 111, 106, 0.4);
+  color: var(--accent);
+}
+.v3d-insp-presets { margin: 0.15rem 0 0.35rem; }
+.view3d-topbar { flex-wrap: wrap; gap: 0.35rem 0.5rem; }
+@media (max-width: 720px) {
+  .view3d-openings-bar { margin-left: 0; width: 100%; }
+  .view3d-add-btn { min-width: 4.6rem; flex: 1 1 auto; }
+  .view3d-size-chip { font-size: 0.68rem; padding: 0.3rem 0.55rem; }
+}

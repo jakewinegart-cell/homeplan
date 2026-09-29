@@ -23,6 +23,21 @@ const STUD_OC = 16 / 12; // 16" on center
 const DEFAULT_WIN_W = 3;
 const DEFAULT_WIN_H = 4;
 const DEFAULT_WIN_SILL = 2.5;
+const DEFAULT_DOOR_W_IN = 36;
+const DEFAULT_DOOR_H_IN = 80;
+const MIN_OPENING_W_FT = 0.5; // allow narrow 8 in (8/12) verticals
+const MIN_OPENING_H_FT = 1.0;
+const WIN_SIZE_PRESETS = [
+  { id: '3x4', label: '3×4', w: 36, h: 48 },
+  { id: '3x5', label: '3×5', w: 36, h: 60 },
+  { id: '4x4', label: '4×4', w: 48, h: 48 },
+  { id: '8x24', label: '8×24', w: 8, h: 24, title: 'Narrow 8 in × 2 ft' },
+];
+const DOOR_SIZE_PRESETS = [
+  { id: '36x80', label: '3×7', w: 36, h: 80, title: 'Entry 36×80 in' },
+  { id: 'sliding_6x7', label: '6×7', w: 72, h: 84, title: 'Sliding / French 6×7' },
+  { id: 'sliding_8x7', label: '8×7', w: 96, h: 84, title: 'Sliding / French 8×7' },
+];
 const WIN_RECESS = 2.5 / 12; // 2–3 in glass setback
 const SILL_PROJ = 1.25 / 12; // projecting exterior sill
 const ROOF_THICK = 5 / 12; // ~4–6 in sheathing+shingle visual
@@ -134,6 +149,10 @@ function createView3D(container) {
   let planOrigin = { ox: 0, oz: 0 };
   let selectedWinId = null; // edit-mode selection (null = orbit-only)
   let dragState = null; // { mode:'move'|'resizeW'|'resizeH', winId, wall, startT, ... }
+  let addMode = null; // null | 'window' | 'door'
+  let addPresetWin = { id: '3x4', w: 36, h: 48 };
+  let addPresetDoor = { id: '36x80', w: DEFAULT_DOOR_W_IN, h: DEFAULT_DOOR_H_IN };
+  let addPendingTap = null; // { x, y, pointerId } — place on short tap
   let lastTapDown = null; // { winId, t, x, y, pointerId, wasDrag } for double-tap
   let pendingEmptyExit = null; // { x, y, pointerId } — click empty exits edit
   let suppressOrbit = false; // true after double-tap / long-press until pointerup
@@ -286,6 +305,7 @@ function createView3D(container) {
     }
 
     wireInspector();
+    wireOpeningsUI();
 
     window.addEventListener('resize', onResize);
     applyShadowMode();
@@ -2870,9 +2890,16 @@ function createView3D(container) {
   }
 
   function onKeyDown(e) {
-    if (e.key === 'Escape' && selectedWinId) {
-      exitEditMode();
-      e.preventDefault();
+    if (e.key === 'Escape') {
+      if (addMode) {
+        setAddMode(null);
+        e.preventDefault();
+        return;
+      }
+      if (selectedWinId) {
+        exitEditMode();
+        e.preventDefault();
+      }
     }
   }
 
@@ -2889,6 +2916,17 @@ function createView3D(container) {
       }
     }
     if (e.button !== 0) return;
+
+    // Add-opening mode: arm a short tap to place on wall (orbit still if drag)
+    if (addMode) {
+      clearLongPress();
+      longPressShown = false;
+      lastTapDown = null;
+      pendingEmptyExit = null;
+      addPendingTap = { x: e.clientX, y: e.clientY, pointerId: e.pointerId, wasDrag: false };
+      // Allow orbit if user drags; place on short tap in finishPointerUp
+      return;
+    }
 
     // Short tap elsewhere dismisses an open part tag
     if (partTagEl && !partTagEl.hidden) {
@@ -2987,6 +3025,11 @@ function createView3D(container) {
         pendingEmptyExit = null; // became an orbit drag
       }
     }
+    if (addPendingTap && addPendingTap.pointerId === e.pointerId) {
+      if (Math.hypot(e.clientX - addPendingTap.x, e.clientY - addPendingTap.y) > TAP_MOVE_PX) {
+        addPendingTap.wasDrag = true;
+      }
+    }
   }
 
   function onPointerMoveDoc(e) {
@@ -3021,7 +3064,7 @@ function createView3D(container) {
         const ux = dx / len, uz = dz / len;
         const along = (pt.x - cx) * ux + (pt.z - cz) * uz;
         let newW = Math.abs(along) * 2;
-        newW = Math.max(1.5, Math.min(wallLen * 0.85, newW));
+        newW = Math.max(MIN_OPENING_W_FT, Math.min(wallLen * 0.85, newW));
         const halfT = (newW / len) / 2;
         let t = win.t;
         t = Math.max(halfT + 0.01, Math.min(1 - halfT - 0.01, t));
@@ -3042,7 +3085,7 @@ function createView3D(container) {
       const pt = new THREE.Vector3();
       if (raycaster.ray.intersectPlane(plane, pt)) {
         let newH = pt.y - win.sillFt;
-        newH = Math.max(1.5, Math.min(wallH - win.sillFt - 0.2, newH));
+        newH = Math.max(MIN_OPENING_H_FT, Math.min(wallH - win.sillFt - 0.2, newH));
         applyLocalWin(dragState.winId, { heightFt: Math.round(newH * 20) / 20 }, { live: true });
       }
     }
@@ -3065,6 +3108,22 @@ function createView3D(container) {
       longPressShown = false;
       lastTapDown = null;
       pendingEmptyExit = null;
+      addPendingTap = null;
+      return;
+    }
+
+    // Add mode: short tap places opening on nearest wall under cursor
+    if (addPendingTap && (e.pointerId == null || addPendingTap.pointerId === e.pointerId)) {
+      const tap = addPendingTap;
+      addPendingTap = null;
+      if (!tap.wasDrag && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) <= TAP_MOVE_PX) {
+        const placed = tryPlaceOpeningFromEvent(e);
+        if (placed) {
+          e.preventDefault && e.preventDefault();
+          return;
+        }
+      }
+      // Drag / miss: leave add mode sticky so user can try again
       return;
     }
 
@@ -3273,6 +3332,259 @@ function createView3D(container) {
     }
   }
 
+  function defaultWinPresetFromStore() {
+    const w = (lastStore && lastStore.opening_preset_win_w_in) || 36;
+    const h = (lastStore && lastStore.opening_preset_win_h_in) || 48;
+    const match = WIN_SIZE_PRESETS.find((p) => p.w === w && p.h === h);
+    return match ? { id: match.id, w: match.w, h: match.h } : { id: 'custom', w, h };
+  }
+
+  function defaultDoorPresetFromStore() {
+    const w = (lastStore && lastStore.opening_preset_door_w_in) || DEFAULT_DOOR_W_IN;
+    const h = (lastStore && lastStore.opening_preset_door_h_in) || DEFAULT_DOOR_H_IN;
+    const match = DOOR_SIZE_PRESETS.find((p) => p.w === w && p.h === h);
+    return match ? { id: match.id, w: match.w, h: match.h } : { id: 'custom', w, h };
+  }
+
+  function getActiveAddPreset() {
+    if (addMode === 'door') return addPresetDoor;
+    return addPresetWin;
+  }
+
+  function setAddMode(mode) {
+    if (mode && mode !== 'window' && mode !== 'door') mode = null;
+    addMode = mode || null;
+    addPendingTap = null;
+    if (addMode) {
+      // Exit edit when entering place mode
+      if (selectedWinId) selectWindow(null, { silent: true });
+      if (addMode === 'window' && (!addPresetWin || !addPresetWin.w)) {
+        addPresetWin = defaultWinPresetFromStore();
+      }
+      if (addMode === 'door' && (!addPresetDoor || !addPresetDoor.w)) {
+        addPresetDoor = defaultDoorPresetFromStore();
+      }
+    }
+    updateAddChrome();
+    if (hooks.onAddModeChange) {
+      try { hooks.onAddModeChange(addMode); } catch (err) { console.warn(err); }
+    }
+  }
+
+  function updateAddChrome() {
+    const btnWin = container.querySelector('#view3d-add-window');
+    const btnDoor = container.querySelector('#view3d-add-door');
+    const btnCancel = container.querySelector('#view3d-add-cancel');
+    const chips = container.querySelector('#view3d-size-chips');
+    const hint = container.querySelector('#view3d-hint');
+    if (btnWin) btnWin.classList.toggle('active', addMode === 'window');
+    if (btnDoor) btnDoor.classList.toggle('active', addMode === 'door');
+    if (btnCancel) {
+      if (addMode) { btnCancel.hidden = false; btnCancel.removeAttribute('hidden'); }
+      else { btnCancel.hidden = true; btnCancel.setAttribute('hidden', ''); }
+    }
+    if (chips) {
+      if (addMode) {
+        chips.hidden = false;
+        chips.removeAttribute('hidden');
+        renderSizeChips(chips, addMode === 'door' ? DOOR_SIZE_PRESETS : WIN_SIZE_PRESETS, getActiveAddPreset(), (preset) => {
+          if (addMode === 'door') addPresetDoor = { id: preset.id, w: preset.w, h: preset.h };
+          else addPresetWin = { id: preset.id, w: preset.w, h: preset.h };
+          updateAddChrome();
+        });
+      } else {
+        chips.hidden = true;
+        chips.setAttribute('hidden', '');
+        chips.innerHTML = '';
+      }
+    }
+    if (hint && hint.dataset) {
+      if (addMode === 'window') {
+        hint.dataset.base = hint.dataset.base || hint.innerHTML;
+        hint.innerHTML = '<strong>Add window:</strong> tap a wall to place · pick size chip · Cancel / Esc to exit';
+      } else if (addMode === 'door') {
+        hint.dataset.base = hint.dataset.base || hint.innerHTML;
+        hint.innerHTML = '<strong>Add door:</strong> tap a wall to place · pick size chip · Cancel / Esc to exit';
+      } else if (hint.dataset.base) {
+        hint.innerHTML = hint.dataset.base;
+      }
+    }
+    if (renderer && renderer.domElement) {
+      renderer.domElement.style.cursor = addMode ? 'crosshair' : '';
+    }
+  }
+
+  function renderSizeChips(host, presets, active, onPick) {
+    if (!host) return;
+    host.innerHTML = '';
+    presets.forEach((preset) => {
+      if (!preset.w || !preset.h) return;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'view3d-size-chip' + (active && active.id === preset.id ? ' active' : '');
+      btn.textContent = preset.label;
+      btn.title = preset.title || preset.label;
+      btn.dataset.presetId = preset.id;
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onPick(preset);
+      });
+      host.appendChild(btn);
+    });
+  }
+
+  function wireOpeningsUI() {
+    const btnWin = container.querySelector('#view3d-add-window');
+    const btnDoor = container.querySelector('#view3d-add-door');
+    const btnCancel = container.querySelector('#view3d-add-cancel');
+    if (btnWin) {
+      btnWin.addEventListener('click', () => {
+        setAddMode(addMode === 'window' ? null : 'window');
+      });
+    }
+    if (btnDoor) {
+      btnDoor.addEventListener('click', () => {
+        setAddMode(addMode === 'door' ? null : 'door');
+      });
+    }
+    if (btnCancel) {
+      btnCancel.addEventListener('click', () => setAddMode(null));
+    }
+    // Seed presets from store when available later; initial defaults OK
+    addPresetWin = { id: '3x4', w: 36, h: 48 };
+    addPresetDoor = { id: '36x80', w: DEFAULT_DOOR_W_IN, h: DEFAULT_DOOR_H_IN };
+    updateAddChrome();
+  }
+
+  function pickWorldPoint(e) {
+    if (!renderer || !rootGroup) return null;
+    setPointerFromEvent(e);
+    raycaster.setFromCamera(pointer, camera);
+    const hits = raycaster.intersectObjects(rootGroup.children, true);
+    for (let i = 0; i < hits.length; i++) {
+      const h = hits[i];
+      if (!h.object || h.object.isSprite) continue;
+      const ud = resolveTagUserData(h.object) || {};
+      if (ud.type === 'ground' || ud.type === 'roof' || ud.type === 'floorFraming'
+          || ud.type === 'floorIBeam' || ud.type === 'pier' || ud.type === 'pierFoundation'
+          || ud.type === 'gradeBeam' || ud.type === 'grid') continue;
+      return h.point.clone();
+    }
+    // Fallback: intersect y=wall mid plane
+    const y = ((lastStore && lastStore.wall_height_ft) || 8) * 0.45;
+    plane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, y, 0));
+    const pt = new THREE.Vector3();
+    if (raycaster.ray.intersectPlane(plane, pt)) return pt;
+    return null;
+  }
+
+  function findNearestWallAt(worldX, worldZ, maxDist) {
+    if (!lastPlan) return null;
+    const ox = planOrigin.ox, oz = planOrigin.oz;
+    const px = worldX + ox;
+    const py = worldZ + oz;
+    let best = null;
+    (lastPlan.walls || []).forEach((wall) => {
+      const dx = wall.x2 - wall.x1;
+      const dy = wall.y2 - wall.y1;
+      const len2 = dx * dx + dy * dy;
+      if (len2 < 0.01) return;
+      let t = ((px - wall.x1) * dx + (py - wall.y1) * dy) / len2;
+      t = Math.max(0, Math.min(1, t));
+      const qx = wall.x1 + dx * t;
+      const qy = wall.y1 + dy * t;
+      const dist = Math.hypot(px - qx, py - qy);
+      if (!best || dist < best.dist) best = { wall, t, dist, len: Math.sqrt(len2) };
+    });
+    const lim = maxDist != null ? maxDist : 2.8;
+    if (!best || best.dist > lim) return null;
+    return best;
+  }
+
+  function tryPlaceOpeningFromEvent(e) {
+    if (!addMode || !lastPlan) return false;
+    const pt = pickWorldPoint(e);
+    if (!pt) {
+      if (hooks.onToast) hooks.onToast('Tap on or near a wall to place');
+      return false;
+    }
+    // Account for pier lift: content may be raised; walls are relative to rootGroup
+    let localX = pt.x, localZ = pt.z;
+    if (rootGroup) {
+      // pt is world; rootGroup may be at origin — pier lift is on children, wall coords are local
+      // Hit points on elevated meshes already include child.position.y but x/z match plan local
+    }
+    const near = findNearestWallAt(localX, localZ, 3.2);
+    if (!near) {
+      if (hooks.onToast) hooks.onToast('Tap on or near a wall to place');
+      return false;
+    }
+    const type = addMode;
+    const preset = getActiveAddPreset();
+    const wIn = preset.w || (type === 'door' ? DEFAULT_DOOR_W_IN : 36);
+    const hIn = preset.h || (type === 'door' ? DEFAULT_DOOR_H_IN : 48);
+    const widthFt = wIn / 12;
+    const heightFt = hIn / 12;
+    const halfT = (widthFt / Math.max(near.len, 0.1)) / 2;
+    let t = near.t;
+    t = Math.max(halfT + 0.02, Math.min(1 - halfT - 0.02, t));
+    const payload = {
+      type,
+      wall_id: near.wall.id,
+      t,
+      w_ft: Math.round(widthFt * 1000) / 1000,
+      h_ft: Math.round(heightFt * 1000) / 1000,
+      sill_ft: type === 'door' ? 0 : DEFAULT_WIN_SILL,
+      door_type: (type === 'door' && wIn >= 60) ? 'sliding' : null,
+      preset_id: preset.id,
+    };
+    let win = null;
+    if (hooks.onOpeningAdd) {
+      try { win = hooks.onOpeningAdd(payload); } catch (err) { console.warn(err); }
+    } else {
+      // Fallback: mutate local plan (verify / standalone)
+      if (!lastPlan.windows) lastPlan.windows = [];
+      const id = (type === 'door' ? 'door_' : 'win_') + Math.random().toString(36).slice(2, 8);
+      win = normalizeWin({
+        id, wallId: near.wall.id, t, widthFt: payload.w_ft, heightFt: payload.h_ft,
+        sillFt: payload.sill_ft, openingType: type, doorType: payload.door_type,
+      }, lastStore);
+      lastPlan.windows.push(win);
+      preserveCamera = true;
+      buildFromPlan(lastPlan, lastStore, { preserveCamera: true });
+    }
+    setAddMode(null);
+    if (win && win.id) {
+      // Prefer arming edit on the new opening (place-then-select)
+      selectWindow(win.id);
+    }
+    return !!win;
+  }
+
+  function applyInspectorPreset(preset) {
+    if (!selectedWinId || !preset || !(preset.w > 0)) return;
+    const patch = {
+      widthFt: preset.w / 12,
+      heightFt: preset.h / 12,
+    };
+    const win = getWinData(selectedWinId);
+    if (win) {
+      const isDoor = (win.openingType === 'door' || win.openingType === 'large' || win.autoShared);
+      if (isDoor) patch.sillFt = 0;
+      else if (preset.h <= 30) patch.sillFt = Math.max(win.sillFt, 2.5); // keep sill for short tall-narrow
+    }
+    const wall = getWallForWin(win);
+    if (win && wall) {
+      const len = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1) || 1;
+      const halfT = (patch.widthFt / len) / 2;
+      patch.t = Math.max(halfT + 0.01, Math.min(1 - halfT - 0.01, win.t));
+    }
+    applyLocalWin(selectedWinId, patch);
+    const updated = getWinData(selectedWinId);
+    if (updated && hooks.onWindowChange) hooks.onWindowChange({ ...updated }, { final: true });
+  }
+
   function wireInspector() {
     if (!inspectorEl) return;
     const bind = (id, prop) => {
@@ -3360,6 +3672,15 @@ function createView3D(container) {
     set('#v3d-win-t', Math.round(win.t * 1000) / 1000);
     const title = panel.querySelector('#v3d-win-title');
     if (title) title.textContent = openingEditLabel(win);
+    const isDoor = win.openingType === 'door' || win.openingType === 'large' || win.autoShared;
+    const presetHost = panel.querySelector('#v3d-insp-presets');
+    if (presetHost) {
+      const list = isDoor ? DOOR_SIZE_PRESETS : WIN_SIZE_PRESETS;
+      const wIn = Math.round(win.widthFt * 12);
+      const hIn = Math.round(win.heightFt * 12);
+      const active = list.find((p) => p.w === wIn && p.h === hIn) || null;
+      renderSizeChips(presetHost, list, active, (preset) => applyInspectorPreset(preset));
+    }
     updateEditChrome(win);
   }
 
@@ -3606,6 +3927,17 @@ function createView3D(container) {
     debugShowPartTagForType,
     debugPartTagState,
     debugHidePartTag: hidePartTag,
+    setAddMode,
+    getAddMode: () => addMode,
+    setAddPreset: (kind, preset) => {
+      if (kind === 'door') addPresetDoor = Object.assign({}, addPresetDoor, preset || {});
+      else addPresetWin = Object.assign({}, addPresetWin, preset || {});
+      updateAddChrome();
+    },
+    getAddPreset: (kind) => (kind === 'door' ? { ...addPresetDoor } : { ...addPresetWin }),
+    debugTryPlaceOpening: (clientX, clientY) => tryPlaceOpeningFromEvent({ clientX, clientY }),
+    WIN_SIZE_PRESETS,
+    DOOR_SIZE_PRESETS,
   };
 }
 

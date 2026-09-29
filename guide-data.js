@@ -177,6 +177,7 @@
             { id: '3x4', label: 'Windows 3×4 ft', w: 36, h: 48 },
             { id: '3x5', label: 'Windows 3×5 ft', w: 36, h: 60 },
             { id: '4x4', label: 'Windows 4×4 ft', w: 48, h: 48 },
+            { id: '8x24', label: 'Narrow 8 in × 2 ft (8×24 in)', w: 8, h: 24 },
             { id: 'mix', label: 'Mix / not sure (use 3×4)' },
           ] },
         { id: 'D19', prompt: 'Any large openings (wider than a normal door/window)?', answer_type: 'yes_no', required: true, driver3d: true,
