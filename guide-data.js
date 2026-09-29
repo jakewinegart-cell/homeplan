@@ -569,6 +569,9 @@
     else if (f24b === '24') eave_overhang_in = 24;
     else if (f24b === 'enter' && Number(a.F24b_in) > 0) eave_overhang_in = Number(a.F24b_in);
     else defaultsUsed.push('eave_overhang_in');
+    // Cap absurd custom overhangs; 3D also clamps. Modest eaves only (~6–36 in).
+    if (!(eave_overhang_in >= 0) || !Number.isFinite(eave_overhang_in)) eave_overhang_in = 12;
+    else if (eave_overhang_in > 36) eave_overhang_in = 36;
 
     let door_w = 36, door_h = 80, win_w = 36, win_h = 48;
     const op = a.D18b || {};

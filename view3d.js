@@ -1714,6 +1714,25 @@ function createView3D(container) {
       w: maxX - minX, d: maxY - minY };
   }
 
+  /** Addition / remodel footprint only — rooms + walls. Excludes existing house,
+   * fixtures, and freehand rooflines so the 3D roof does not span the whole site. */
+  function additionBounds(plan) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, any = false;
+    const c = (x, y) => { any = true; minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); };
+    (plan.walls || []).forEach((w) => { c(w.x1, w.y1); c(w.x2, w.y2); });
+    (plan.rooms || []).forEach((r) => { c(r.x, r.y); c(r.x + r.w, r.y + r.h); });
+    if (!any) return null;
+    return { minX, minY, maxX, maxY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2,
+      w: maxX - minX, d: maxY - minY };
+  }
+
+  /** Modest eave only: default 12 in, clamp absurd custom values (cap 36 in). */
+  function clampEaveOverhangIn(v) {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0) return 12;
+    if (n > 36) return 36;
+    return n;
+  }
 
   /** Drop-in fixtures from plan — EXAMPLE massing only (no SKUs). Dims in inches from fixtures stub. */
   function addFixturesFromPlan(plan, ox, oz, group) {
@@ -1972,7 +1991,7 @@ function createView3D(container) {
     const pitch = (plan && plan.roofPitch != null) ? plan.roofPitch
       : (store.roof_pitch || 4 / 12);
     const roofStyle = (plan && plan.roofStyle) || store.roof_style || 'gable';
-    const eaveIn = store.eave_overhang_in != null ? store.eave_overhang_in : 12;
+    const eaveIn = clampEaveOverhangIn(store.eave_overhang_in != null ? store.eave_overhang_in : 12);
     const cladKey = store.cladding_texture || 'fiber';
     const roofKey = store.roofing_texture || 'asphalt';
     const lowSlope = pitch <= (2 / 12) || store.roof_tie_in === 'flat' || store.roof_tie_in === 'low-slope';
@@ -2243,7 +2262,16 @@ function createView3D(container) {
       focusY = maxWallH * 0.4;
 
       if (store.show_roof !== false) {
-        addRoof(rootGroup, Math.max(b.w, 6) + 1, Math.max(b.d, 6) + 1, maxWallH, pitch, eaveIn, roofMat, store.roof_tie_in, roofStyle);
+        // Roof footprint = addition rooms/walls only (existing house keeps its own roof).
+        // Extra size beyond walls comes solely from eave_overhang_in (modest, clamped).
+        const ab = additionBounds(plan) || b;
+        const roofW = Math.max(ab.w, 1);
+        const roofD = Math.max(ab.d, 1);
+        const gRoof = new THREE.Group();
+        gRoof.position.set(ab.cx - ox, 0, ab.cy - oz);
+        gRoof.userData = { type: 'additionRoof' };
+        addRoof(gRoof, roofW, roofD, maxWallH, pitch, eaveIn, roofMat, store.roof_tie_in, roofStyle);
+        rootGroup.add(gRoof);
       }
 
       const ridgeMat = mat(0xb05a3c);
@@ -3496,6 +3524,7 @@ function createView3D(container) {
     debugSetCamera,
     debugScreenshotDataURL,
     debugStats,
+    debugGetRoot: () => rootGroup,
     debugApplyWindow: (id, props, opts) => applyLocalWin(id, props, opts),
     debugCommitWindow: (id) => {
       if (!lastPlan) return;
