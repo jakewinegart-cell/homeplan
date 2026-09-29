@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HomePlan — Remodel & Additions</title>
+  <link rel="stylesheet" href="styles.css?v=beams2" />
+</head>
+<body>
+  <div id="app">
+    <!-- Top bar -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-name">HomePlan</span>
+      </div>
+      <nav class="main-nav" role="tablist" aria-label="Main">
+        <button class="nav-btn active" data-view="plan" role="tab" aria-selected="true">Plan</button>
+        <button class="nav-btn" data-view="guidance" role="tab" aria-selected="false">Guidance</button>
+        <button class="nav-btn" data-view="materials" role="tab" aria-selected="false">Materials</button>
+        <button class="nav-btn" data-view="view3d" role="tab" aria-selected="false">3D</button>
+        <button class="nav-btn" data-view="walkthrough" role="tab" aria-selected="false">Walkthrough</button>
+        <button class="nav-btn" data-view="project" role="tab" aria-selected="false">Project</button>
+      </nav>
+      <div class="nav-select-wrap">
+        <label for="nav-view-select" class="sr-only">View</label>
+        <select id="nav-view-select" class="nav-view-select" aria-label="Main view">
+          <option value="plan" selected>Plan</option>
+          <option value="guidance">Guidance</option>
+          <option value="materials">Materials</option>
+          <option value="view3d">3D</option>
+          <option value="walkthrough">Walkthrough</option>
+          <option value="project">Project</option>
+        </select>
+      </div>
+      <div class="topbar-right">
+        <label class="project-name-wrap">
+          <span class="sr-only">Project name</span>
+          <input id="project-name" type="text" value="My Remodel" maxlength="80" />
+        </label>
+        <button type="button" class="btn btn-ghost" id="btn-remodel-guide" title="Remodel Guide / Structure Wizard">Guide</button>
+        <button type="button" class="btn btn-ghost" id="btn-save" title="Save to this browser">Save</button>
+        <button type="button" class="btn btn-accent" id="btn-share">Share</button>
+      </div>
+    </header>
+
+    <main class="views">
+      <!-- ========== PLAN (floor-plan workspace) ========== -->
+      <section id="view-plan" class="view active" role="tabpanel" aria-label="Floor plan">
+        <div class="plan-layout">
+          <aside class="plan-toolbar" aria-label="Drawing tools">
+            <button type="button" class="tool-btn tool-btn-step" id="btn-set-existing-house" title="Existing house — set the old / current structure footprint">
+              <span class="tool-icon">⌂</span>
+              <span>Existing</span>
+            </button>
+            <p class="tool-step-hint" id="existing-house-hint">Old structure</p>
+            <button type="button" class="tool-btn tool-btn-step" id="btn-foundation" title="Foundation — slab, crawl, basement, or piers / sonotubes (elevated)">
+              <span class="tool-icon">▽</span>
+              <span>Foundation</span>
+            </button>
+            <p class="tool-step-hint" id="foundation-hint">Slab · piers…</p>
+            <div class="tool-divider"></div>
+            <button type="button" class="tool-btn" data-tool="select" title="Select / move">
+              <span class="tool-icon">↖</span>
+              <span>Select</span>
+            </button>
+            <button type="button" class="tool-btn" data-tool="wall" title="Draw walls">
+              <span class="tool-icon">━</span>
+              <span>Wall</span>
+            </button>
+            <button type="button" class="tool-btn active" data-tool="room" title="Draw room rectangle">
+              <span class="tool-icon">▭</span>
+              <span>Room</span>
+            </button>
+            <button type="button" class="tool-btn" data-tool="window" title="Place window on wall">
+              <span class="tool-icon">⬚</span>
+              <span>Window</span>
+            </button>
+            <div class="tool-divider"></div>
+            <button type="button" class="tool-btn" data-tool="counter" title="Place counter run (EXAMPLE · 24 in deep)">
+              <span class="tool-icon">▬</span>
+              <span>Counter</span>
+            </button>
+            <button type="button" class="tool-btn" data-tool="cabinet" title="Place cabinets (base / upper)">
+              <span class="tool-icon">▣</span>
+              <span>Cabinet</span>
+            </button>
+            <button type="button" class="tool-btn" data-tool="sink" title="Place sink (kitchen / bar / bath)">
+              <span class="tool-icon">◯</span>
+              <span>Sink</span>
+            </button>
+            <button type="button" class="tool-btn" data-tool="outlet" title="Place outlet on wall">
+              <span class="tool-icon">⊞</span>
+              <span>Outlet</span>
+            </button>
+            <div class="tool-divider"></div>
+            <button type="button" class="tool-btn" id="btn-roof" title="Roof pitch &amp; style">
+              <span class="tool-icon">⌃</span>
+              <span>Roof</span>
+            </button>
+            <div class="tool-divider"></div>
+            <button type="button" class="tool-btn" data-tool="undo" id="btn-undo" title="Undo">
+              <span class="tool-icon">↶</span>
+              <span>Undo</span>
+            </button>
+            <button type="button" class="tool-btn danger" data-tool="clear" id="btn-clear" title="Clear plan">
+              <span class="tool-icon">✕</span>
+              <span>Clear</span>
+            </button>
+            <button type="button" class="tool-btn tool-done" id="btn-draw-done" title="Finish wall chain" hidden>
+              <span class="tool-icon">✓</span>
+              <span>Done</span>
+            </button>
+            <div class="tool-divider"></div>
+            <button type="button" class="tool-btn" id="btn-zoom-in" title="Zoom in">
+              <span class="tool-icon">+</span>
+              <span>Zoom+</span>
+            </button>
+            <button type="button" class="tool-btn" id="btn-zoom-out" title="Zoom out">
+              <span class="tool-icon">−</span>
+              <span>Zoom−</span>
+            </button>
+            <button type="button" class="tool-btn" id="btn-zoom-reset" title="Reset view">
+              <span class="tool-icon">⊡</span>
+              <span>Reset</span>
+            </button>
+          </aside>
+
+          <div class="canvas-wrap">
+            <canvas id="floor-canvas" width="1200" height="720" aria-label="Floor plan canvas"></canvas>
+            <div id="empty-tip" class="empty-tip">
+              <button type="button" class="empty-tip-dismiss" id="btn-dismiss-tip" aria-label="Dismiss">×</button>
+              <strong>Start your floor plan</strong>
+              <p>Tap <strong>Existing</strong> to place the old house, or drag a room rectangle. Tools: Wall / Window / Counter / Cabinet / Sink / Outlet / Roof.</p>
+              <div class="empty-tip-actions">
+                <button type="button" class="btn btn-accent" id="btn-start-drawing">Start drawing</button>
+                <button type="button" class="btn btn-ghost" id="btn-got-it-tip">Got it</button>
+              </div>
+            </div>
+            <div id="fixture-subtype-bar" class="fixture-subtype-bar" hidden>
+              <span class="fixture-subtype-label" id="fixture-subtype-label">Type</span>
+              <div class="fixture-chip-row" id="fixture-subtype-chips" role="group" aria-label="Fixture subtype"></div>
+            </div>
+            <div id="fixture-tip" class="fixture-tip" hidden></div>
+            <div id="draw-done-fab" class="draw-done-fab" hidden>
+              <button type="button" class="btn btn-accent" id="btn-draw-done-fab">Done</button>
+            </div>
+          </div>
+
+          <aside class="plan-sidebar" aria-label="Plan details">
+            <h2 class="sidebar-title">Rooms</h2>
+            <ul id="room-list" class="room-list"></ul>
+            <p id="room-list-empty" class="muted small">No rooms yet — use the Room tool.</p>
+
+            <h2 class="sidebar-title">Selected</h2>
+            <div id="props-panel" class="props-panel">
+              <p class="muted small" id="props-empty">Click an object to edit its properties.</p>
+              <div id="props-fields" class="props-fields hidden">
+                <label>Name <input type="text" id="prop-name" /></label>
+                <label>Width (ft) <input type="number" id="prop-width" step="0.5" min="0" /></label>
+                <label>Length (ft) <input type="number" id="prop-length" step="0.5" min="0" /></label>
+                <label id="prop-height-wrap" class="hidden">Wall height (ft) <input type="number" id="prop-height" step="0.5" min="1" max="30" /></label>
+                <button type="button" class="btn btn-ghost btn-sm" id="prop-delete">Delete</button>
+              </div>
+            </div>
+
+            <div class="sidebar-hint muted small">
+              Grid = 1 ft. Snap is light. Scroll wheel zooms; middle-drag or Space+drag pans.
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ========== GUIDANCE (Q&A shell) ========== -->
+      <section id="view-guidance" class="view" role="tabpanel" aria-label="Guidance" hidden>
+        <div class="panel-page">
+          <header class="panel-header">
+            <h1>Project guidance</h1>
+            <!-- REMODEL_GUIDE_HOOK: /workspace/remodel-app-content-v1.md → guide-data.js -->
+            <p class="lede">Stages A–K from Remodel Guide. Answers drive tips, materials, and 3D height/pitch.</p>
+          </header>
+          <div class="guidance-layout">
+            <div class="qa-flow">
+              <div class="qa-progress" aria-hidden="true">
+                <div class="qa-progress-bar" id="qa-progress-bar"></div>
+              </div>
+              <p class="qa-step-label muted small">
+                Stage <span id="qa-stage-id">A</span> — <span id="qa-stage-title">Project type</span>
+                · Question <span id="qa-step-num">1</span> of <span id="qa-step-total">—</span>
+              </p>
+              <div id="qa-card" class="qa-card">
+                <p id="qa-help" class="muted small hidden"></p>
+                <h2 id="qa-question">Loading…</h2>
+                <div id="qa-options" class="qa-options"></div>
+                <div id="qa-extra" class="qa-extra"></div>
+                <div id="qa-inline-callout" class="qa-callout hidden"></div>
+              </div>
+              <div class="qa-nav">
+                <button type="button" class="btn btn-ghost" id="qa-back" disabled>Back</button>
+                <button type="button" class="btn btn-ghost" id="qa-skip">Skip</button>
+                <button type="button" class="btn btn-accent" id="qa-next">Next</button>
+              </div>
+            </div>
+            <aside class="recs-panel">
+              <h2>Things to keep in mind</h2>
+              <!-- REMODEL_GUIDE_HOOK: recommendation rules from remodel-app-content-v1.md -->
+              <p class="muted small">Tips and warnings update as you answer (15 core rules + callouts).</p>
+              <ul id="recs-list" class="recs-list"></ul>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== MATERIALS ========== -->
+      <section id="view-materials" class="view" role="tabpanel" aria-label="Materials" hidden>
+        <div class="panel-page">
+          <header class="panel-header">
+            <h1>Materials &amp; rough pricing</h1>
+            <p class="lede example-banner">All dollars are <strong>EXAMPLE ESTIMATES</strong> — not quotes or bids. From Remodel Guide content v1.</p>
+          </header>
+          <div class="materials-summary" id="materials-summary">
+            <div class="stat-card">
+              <span class="stat-label">EXAMPLE total</span>
+              <span class="stat-value" id="materials-total">$0</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Materials + waste</span>
+              <span class="stat-value" id="materials-with-waste">$0</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Line items</span>
+              <span class="stat-value" id="materials-count">0</span>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="materials-table" id="materials-table">
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>Item</th>
+                  <th>Supplier slot</th>
+                  <th>Qty</th>
+                  <th>UOM</th>
+                  <th>EXAMPLE unit</th>
+                  <th>EXAMPLE ext.</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="rollup-card" id="materials-rollup">
+            <h2>Price rollup <span class="example-tag">EXAMPLE ESTIMATES</span></h2>
+            <dl class="rollup-dl" id="rollup-dl"></dl>
+            <p class="muted small" id="rollup-disclaimer"></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== 3D (live simplified from plan) ========== -->
+      <section id="view-view3d" class="view" role="tabpanel" aria-label="3D view" hidden>
+        <div class="view3d-layout">
+          <div class="view3d-topbar">
+            <span class="view3d-label" id="view3d-disclaimer">Conceptual visualization — not construction documents.</span>
+            <div id="view3d-edit-bar" class="view3d-edit-bar" hidden>
+              <span id="view3d-edit-label">Editing window</span>
+              <button type="button" class="btn btn-sm btn-accent" id="view3d-edit-done">Done</button>
+            </div>
+            <button type="button" class="btn btn-sm btn-ghost" id="btn-foundation-3d" title="Foundation — slab, crawl, basement, or piers / sonotubes">Foundation</button>
+            <div class="view3d-toggles">
+              <label class="view3d-dims-toggle" title="Toggle dimension labels">
+                <input type="checkbox" id="view3d-dims-toggle" checked />
+                Dims
+              </label>
+              <label class="view3d-dims-toggle" title="Stud framing vs finished walls">
+                <input type="checkbox" id="view3d-studs-toggle" checked />
+                Studs
+              </label>
+              <label class="view3d-dims-toggle" title="Conceptual floor framing / I-beams under floor (EXAMPLE spacing; default ON — hides finish deck so beams read from above)">
+                <input type="checkbox" id="view3d-floorframing-toggle" checked />
+                Floor framing
+              </label>
+              <label class="view3d-dims-toggle" title="Sun shadows (auto-off on narrow screens; warm interior fills stay on)">
+                <input type="checkbox" id="view3d-shadows-toggle" checked />
+                Shadows
+              </label>
+            </div>
+            <button type="button" class="defaults-chip" id="view3d-defaults-chip" hidden title="Open Guidance to refine geometry">Using defaults — tap to refine</button>
+          </div>
+          <div id="view3d-canvas-host" class="view3d-canvas-host" aria-label="3D preview">
+            <aside id="view3d-win-inspector" class="view3d-win-inspector" hidden>
+              <div class="v3d-insp-head">
+                <strong id="v3d-win-title">Editing window</strong>
+                <button type="button" class="v3d-insp-close" id="v3d-win-close" aria-label="Close">×</button>
+              </div>
+              <p class="muted small">Drag to slide · handles resize · Esc or Done to exit</p>
+              <label class="v3d-field">Width (ft)
+                <input type="number" id="v3d-win-w" min="1.5" max="20" step="0.25" />
+              </label>
+              <label class="v3d-field">Height (ft)
+                <input type="number" id="v3d-win-h" min="1.5" max="12" step="0.25" />
+              </label>
+              <label class="v3d-field">Sill (ft)
+                <input type="number" id="v3d-win-sill" min="0" max="8" step="0.25" />
+              </label>
+              <label class="v3d-field">Along wall (t)
+                <input type="number" id="v3d-win-t" min="0" max="1" step="0.01" />
+              </label>
+              <button type="button" class="btn btn-sm btn-accent v3d-insp-done" id="v3d-win-done">Done</button>
+            </aside>
+          </div>
+          <div id="view3d-empty" class="view3d-empty" hidden>
+            <strong>Nothing to show in 3D yet</strong>
+            <p>Draw walls or rooms on the <em>Plan</em> tab, or answer Guidance (addition footprint) for a parametric preview.</p>
+            <button type="button" class="btn btn-accent" id="btn-goto-plan">Go to Plan</button>
+          </div>
+          <div class="view3d-hint muted small">
+            Conceptual visualization — not construction documents. Materials and lighting are illustrative. Not a bid, permit set, or product sample.
+            · Drag to orbit · Scroll to zoom · Hold / right-click a part to name it · Double-click opening to edit · Dims / Studs / Floor framing / Shadows toggles
+          </div>
+        </div>
+      </section>
+
+
+      <!-- ========== WALKTHROUGH (printable) ========== -->
+      <section id="view-walkthrough" class="view" role="tabpanel" aria-label="Build walkthrough" hidden>
+        <div class="panel-page walkthrough-page">
+          <header class="panel-header walkthrough-toolbar no-print">
+            <div>
+              <h1>Build walkthrough</h1>
+              <p class="lede">Printable guide from your plan + Guidance answers. Illustrative only.</p>
+            </div>
+            <div class="btn-row" style="margin-top:0">
+              <button type="button" class="btn btn-ghost" id="btn-wt-refresh">Refresh</button>
+              <button type="button" class="btn btn-accent" id="btn-wt-print">Print / Save PDF</button>
+            </div>
+          </header>
+          <div class="example-banner wt-disclaimer" id="wt-disclaimer-top">
+            <strong>Not construction documents · Not a permit package · Not a bid.</strong>
+            App does not file permits. Day bands and prices are <strong>EXAMPLE ESTIMATES</strong>.
+          </div>
+          <p class="defaults-chip wt-defaults no-print" id="wt-defaults-chip" hidden>Using defaults — refine Plan or Guidance to update walkthrough.</p>
+          <div id="wt-content" class="wt-content print-root">
+            <p class="muted">Open this tab to generate your walkthrough…</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== PROJECT ========== -->
+      <section id="view-project" class="view" role="tabpanel" aria-label="Project" hidden>
+        <div class="panel-page narrow">
+          <header class="panel-header">
+            <h1>Project</h1>
+            <p class="lede">Save stays in this browser. Share is a prototype stub.</p>
+          </header>
+          <div class="project-card">
+            <label class="field">
+              Project name
+              <input type="text" id="project-name-page" maxlength="80" />
+            </label>
+            <p class="muted small" id="save-status">Not saved yet in this session.</p>
+            <div class="btn-row">
+              <button type="button" class="btn btn-accent" id="btn-save-page">Save project</button>
+              <button type="button" class="btn btn-ghost" id="btn-share-page">Share…</button>
+              <button type="button" class="btn btn-ghost" id="btn-export-json">Download JSON</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Share modal stub -->
+  <div id="share-modal" class="modal" hidden>
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-card" role="dialog" aria-labelledby="share-title">
+      <h2 id="share-title">Share project</h2>
+      <p class="muted">Prototype stub — no real hosting yet.</p>
+      <label class="field">
+        Fake share link
+        <div class="input-row">
+          <input type="text" id="share-link" readonly value="https://homeplan.example/share/demo-project" />
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-link">Copy</button>
+        </div>
+      </label>
+      <div class="btn-row">
+        <button type="button" class="btn btn-accent" id="btn-download-share">Export JSON</button>
+        <button type="button" class="btn btn-ghost" data-close-modal>Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Existing house dimensions (addition) -->
+  <div id="existing-house-modal" class="modal sheet-modal" hidden>
+    <div class="modal-backdrop" id="existing-house-backdrop"></div>
+    <div class="modal-card sheet-card" role="dialog" aria-labelledby="existing-house-title">
+      <h2 id="existing-house-title">Existing house</h2>
+      <p class="muted small" id="existing-house-help">Start here for an addition: enter the approximate footprint of the <strong>old / current</strong> house. It locks on the Plan so you can draw new rooms off its edges. Works even if Guidance isn’t set to “addition” yet.</p>
+      <div class="wall-height-fields">
+        <label class="wall-height-field">Length (ft)
+          <input type="number" id="eh-length" inputmode="decimal" min="8" max="200" step="1" value="40" />
+        </label>
+        <label class="wall-height-field">Width (ft)
+          <input type="number" id="eh-width" inputmode="decimal" min="8" max="200" step="1" value="30" />
+        </label>
+      </div>
+      <p class="muted small">Common default: 40 × 30 ft. Tap <strong>Existing</strong> anytime to edit.</p>
+      <div class="btn-row wall-height-actions">
+        <button type="button" class="btn btn-ghost" id="existing-house-skip">Skip for now</button>
+        <button type="button" class="btn btn-accent" id="existing-house-done">Place house</button>
+      </div>
+    </div>
+  </div>
+
+
+
+  <!-- Foundation type picker (E21) -->
+  <div id="foundation-picker-modal" class="modal sheet-modal" hidden>
+    <div class="modal-backdrop" id="foundation-picker-backdrop"></div>
+    <div class="modal-card sheet-card" role="dialog" aria-labelledby="foundation-picker-title">
+      <h2 id="foundation-picker-title">Foundation</h2>
+      <p class="muted small" id="foundation-picker-help">Sets Guidance E21 and elevates the addition in 3D when you pick piers / sonotubes (also called pylons).</p>
+      <p class="muted small" id="foundation-picker-note" hidden>Pier elevate is for additions — place an <strong>Existing</strong> house and draw new rooms, or set project type to addition in Guidance.</p>
+
+      <div class="roof-picker-section">
+        <div class="roof-picker-label">Type</div>
+        <div class="roof-chip-row" id="foundation-type-chips" role="group" aria-label="Foundation type">
+          <button type="button" class="roof-chip" data-foundation="slab">Slab</button>
+          <button type="button" class="roof-chip" data-foundation="crawl">Crawl space</button>
+          <button type="button" class="roof-chip" data-foundation="basement">Basement</button>
+          <button type="button" class="roof-chip" data-foundation="piers">Piers / sonotubes</button>
+          <button type="button" class="roof-chip" data-foundation="match">Match house</button>
+        </div>
+      </div>
+
+      <div class="btn-row" style="margin-top:1rem">
+        <button type="button" class="btn btn-ghost" id="foundation-picker-cancel">Cancel</button>
+        <button type="button" class="btn btn-accent" id="foundation-picker-apply">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Roof pitch & style picker -->
+  <div id="roof-picker-modal" class="modal sheet-modal" hidden>
+    <div class="modal-backdrop" id="roof-picker-backdrop"></div>
+    <div class="modal-card sheet-card" role="dialog" aria-labelledby="roof-picker-title">
+      <h2 id="roof-picker-title">Roof</h2>
+      <p class="muted small" id="roof-picker-target">Applies to the selected room (or primary footprint).</p>
+
+      <div class="roof-picker-section">
+        <div class="roof-picker-label">Pitch</div>
+        <div class="roof-chip-row" id="roof-pitch-chips" role="group" aria-label="Roof pitch">
+          <button type="button" class="roof-chip" data-pitch="3/12">3/12</button>
+          <button type="button" class="roof-chip" data-pitch="4/12">4/12</button>
+          <button type="button" class="roof-chip" data-pitch="5/12">5/12</button>
+          <button type="button" class="roof-chip active" data-pitch="6/12">6/12</button>
+          <button type="button" class="roof-chip" data-pitch="7/12">7/12</button>
+          <button type="button" class="roof-chip" data-pitch="8/12">8/12</button>
+          <button type="button" class="roof-chip" data-pitch="9/12">9/12</button>
+          <button type="button" class="roof-chip" data-pitch="12/12">12/12</button>
+          <button type="button" class="roof-chip" data-pitch="4/10">4/10</button>
+          <button type="button" class="roof-chip" data-pitch="custom">Custom</button>
+        </div>
+        <label class="roof-custom-wrap hidden" id="roof-custom-wrap">Custom rise / run
+          <span class="roof-custom-inputs">
+            <input type="number" id="roof-custom-rise" inputmode="decimal" min="1" max="24" step="0.5" value="6" aria-label="Rise" />
+            <span class="roof-custom-sep">/</span>
+            <input type="number" id="roof-custom-run" inputmode="decimal" min="1" max="24" step="1" value="12" aria-label="Run" />
+          </span>
+        </label>
+      </div>
+
+      <div class="roof-picker-section">
+        <div class="roof-picker-label">Style</div>
+        <div class="roof-chip-row" id="roof-style-chips" role="group" aria-label="Roof style">
+          <button type="button" class="roof-chip active" data-style="gable">Gable</button>
+          <button type="button" class="roof-chip" data-style="hip">Hip</button>
+        </div>
+      </div>
+
+      <div class="btn-row wall-height-actions">
+        <button type="button" class="btn btn-ghost" id="roof-picker-cancel">Cancel</button>
+        <button type="button" class="btn btn-accent" id="roof-picker-apply">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Wall heights sheet (after room place) -->
+  <div id="wall-height-modal" class="modal sheet-modal" hidden>
+    <div class="modal-backdrop" id="wall-height-backdrop"></div>
+    <div class="modal-card sheet-card" role="dialog" aria-labelledby="wall-height-title">
+      <h2 id="wall-height-title">Wall heights</h2>
+      <p class="muted small">Optional — new rooms default to 8 ft. How tall should each wall be? (feet)</p>
+      <div class="wall-height-fields">
+        <label class="wall-height-field">North <span class="muted">(top)</span>
+          <input type="number" id="wh-north" inputmode="decimal" min="1" max="30" step="0.5" value="8" />
+        </label>
+        <label class="wall-height-field">East <span class="muted">(right)</span>
+          <input type="number" id="wh-east" inputmode="decimal" min="1" max="30" step="0.5" value="8" />
+        </label>
+        <label class="wall-height-field">South <span class="muted">(bottom)</span>
+          <input type="number" id="wh-south" inputmode="decimal" min="1" max="30" step="0.5" value="8" />
+        </label>
+        <label class="wall-height-field">West <span class="muted">(left)</span>
+          <input type="number" id="wh-west" inputmode="decimal" min="1" max="30" step="0.5" value="8" />
+        </label>
+      </div>
+      <div class="btn-row wall-height-actions">
+        <button type="button" class="btn btn-ghost" id="wall-height-skip">Skip</button>
+        <button type="button" class="btn btn-ghost" id="wall-height-dont-ask">Don't ask again</button>
+        <button type="button" class="btn btn-ghost" id="wall-height-cancel">Use 8 ft all</button>
+        <button type="button" class="btn btn-accent" id="wall-height-done">Done</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- Remodel Guide (Structure Wizard) slide-over -->
+  <aside id="wizard-panel" class="wizard-panel" hidden aria-label="Remodel Guide">
+    <header class="wizard-header">
+      <div>
+        <h2 class="wizard-title">Remodel Guide</h2>
+        <p class="wizard-sub muted small">Structure Wizard · conceptual plan &amp; 3D</p>
+      </div>
+      <div class="wizard-header-actions">
+        <button type="button" class="btn btn-ghost btn-sm" id="wizard-undo" title="Undo last Guide change" disabled>Undo</button>
+        <button type="button" class="wizard-close" id="wizard-close" aria-label="Close">×</button>
+      </div>
+    </header>
+    <p class="wizard-disclaimer muted small" id="wizard-disclaimer"></p>
+    <div id="wizard-thread" class="wizard-thread" role="log" aria-live="polite"></div>
+    <div id="wizard-confirm" class="wizard-confirm" hidden></div>
+    <div class="wizard-compose">
+      <div id="wizard-chips" class="wizard-chips"></div>
+      <form id="wizard-form" class="wizard-form" autocomplete="off">
+        <input type="text" id="wizard-input" placeholder="e.g. Make the addition 14 by 20" maxlength="240" />
+        <button type="submit" class="btn btn-accent" id="wizard-send">Send</button>
+      </form>
+    </div>
+  </aside>
+  <button type="button" class="wizard-fab" id="wizard-fab" title="Open Remodel Guide">Remodel Guide</button>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script src="walkthrough-data.js?v=beams2"></script>
+  <script src="guide-data.js?v=beams2"></script>
+  <script src="floorplan.js?v=beams2"></script>
+  <script src="wizard-data.js?v=beams2"></script>
+  <script type="module" src="view3d.js?v=beams2"></script>
+  <script src="app.js?v=beams2"></script>
+</body>
+</html>
