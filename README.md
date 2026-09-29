@@ -1,4 +1,4 @@
-**3D / roof height (`?v=roof2`):** addition roof plate sits on wall top plate — rise from building half-span (not eave-to-eave), overhang tip drops along pitch; plate height = max addition wall `heightFt` (not Guidance-only when walls differ); pier lift still raises roof with structure. Footprint remains addition-only + clamped eave from roof1.
+**3D / roof height (`?v=roof3`):** addition roof **underside** at wall line sits on / above top plate (`max` wall `heightFt`); top surface = plate + roof thickness; overhang tip may drop along pitch outside walls. Rise from building half-span; footprint = addition bounds + wall thickness + clamped eave. Pier lift still raises roof with structure. Piers / sonotubes only under **wall edges** (corners + perimeter), never mid-span.
 
 
 # HomePlan — Remodel & Additions (prototype)
@@ -68,7 +68,7 @@ Orbit: drag · zoom: scroll · pan: right-drag.
 ## Foundation (E21 / piers)
 - Plan toolbar **Foundation** (under **Existing**) and 3D **Foundation** button open the same picker as Guidance **E21**.
 - Options: slab, crawl space, basement, **Piers / sonotubes** (elevated — also called pylons), match house. Stored value for piers is always `piers`.
-- Selecting updates Guidance answers, persists with Save, and rebuilds 3D (piers raise the addition on sonotubes).
+- Selecting updates Guidance answers, persists with Save, and rebuilds 3D (piers raise the addition on sonotubes). **Piers only under wall edges** (corners + along exterior/bearing lines ~6 ft o.c.) — never mid-span under open floor; grade beam follows those edge lines.
 - Guidance Section **E** shows when A1 is addition (or both / unsure); remodel-only hides E until Foundation is set from Plan or project type changes. Soft-sets A1 → addition when you pick a foundation type.
 - Wizard phrases (`piers`, `sonotubes`, `pylons`, `elevated`) still map to `foundation_type: piers`.
 

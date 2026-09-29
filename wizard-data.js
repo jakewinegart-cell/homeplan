@@ -1152,7 +1152,7 @@
       slots: { foundation_type: type },
       confirmation: {
         title: 'Foundation',
-        body: tpl('Foundation approach: **{{type}}**. 3D will show slab, crawl, basement, or elevated piers / sonotubes under the footprint — not a soils or structural design.', { type }),
+        body: tpl('Foundation approach: **{{type}}**. 3D will show slab, crawl, basement, or elevated piers / sonotubes under **wall edges only** (not mid-span) — not a soils or structural design.', { type }),
       },
       mutation_ops: [
         { op: 'set_foundation', foundation_type: type },

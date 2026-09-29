@@ -1000,64 +1000,109 @@ function createView3D(container) {
     boxAt(t, height, Math.max(0.2, d - t * 2), cx + w / 2 - t / 2, y, cz, material, group, ud);
   }
 
-  /** Sonotube / pier grid under a rectangular footprint (center ax,az; size addL×addW). */
-  function addPierFoundation(ax, az, addL, addW, pierH, foundMat, beamMat, group) {
+  /**
+   * Sonotube / pier foundation — ONLY under wall edges (corners + along exterior /
+   * bearing wall lines at ~6 ft o.c.). Never mid-span under open floor.
+   * opts.walls: plan walls in plan-ft (with opts.ox/oz origin) → wall-aware placement.
+   * Without walls: perimeter of the ax,az / addL×addW rectangle only.
+   */
+  function addPierFoundation(ax, az, addL, addW, pierH, foundMat, beamMat, group, opts) {
     const wrap = new THREE.Group();
     wrap.userData = { type: 'pierFoundation', pierH };
     group.add(wrap);
     group = wrap;
     const h = pierH > 0 ? pierH : PIER_H_DEFAULT;
-    const spacing = 6; // ft o.c. grid
-    const inset = Math.min(1.0, Math.min(addL, addW) * 0.12);
-    const x0 = ax - addL / 2 + inset;
-    const x1 = ax + addL / 2 - inset;
-    const z0 = az - addW / 2 + inset;
-    const z1 = az + addW / 2 - inset;
-    const nx = Math.max(2, Math.round((x1 - x0) / spacing) + 1);
-    const nz = Math.max(2, Math.round((z1 - z0) / spacing) + 1);
-    const pierPositions = [];
-    for (let i = 0; i < nx; i++) {
-      for (let j = 0; j < nz; j++) {
-        const px = nx === 1 ? ax : x0 + (i / (nx - 1)) * (x1 - x0);
-        const pz = nz === 1 ? az : z0 + (j / (nz - 1)) * (z1 - z0);
-        pierPositions.push([px, pz]);
-        const cyl = new THREE.Mesh(
-          new THREE.CylinderGeometry(PIER_R, PIER_R * 1.05, h, 16),
-          foundMat
-        );
-        cyl.position.set(px, h / 2, pz);
-        cyl.castShadow = true;
-        cyl.receiveShadow = true;
-        cyl.userData = { type: 'pier', label: 'Pier / sonotube' };
-        group.add(cyl);
-        // small footing pad
-        const pad = new THREE.Mesh(
-          new THREE.CylinderGeometry(PIER_R * 1.6, PIER_R * 1.7, 0.25, 12),
-          foundMat
-        );
-        pad.position.set(px, 0.12, pz);
-        pad.receiveShadow = true;
-        pad.userData = { type: 'pier', label: 'Pier footing' };
-        group.add(pad);
+    const spacing = 6; // ft o.c. along edges
+    const opts0 = opts || {};
+    const pierMap = new Map();
+    function addPierPt(px, pz) {
+      const k = keyPt(px, pz);
+      if (!pierMap.has(k)) pierMap.set(k, [px, pz]);
+    }
+    function placeAlongSegment(x1, z1, x2, z2) {
+      const len = Math.hypot(x2 - x1, z2 - z1);
+      if (len < 0.05) return;
+      const n = Math.max(2, Math.round(len / spacing) + 1);
+      for (let i = 0; i < n; i++) {
+        const t = i / (n - 1);
+        addPierPt(x1 + (x2 - x1) * t, z1 + (z2 - z1) * t);
       }
     }
-    // Simple grade beam / skirt ring under floor (optional cue)
+
+    const walls = opts0.walls || null;
+    const wallOx = opts0.ox != null ? opts0.ox : 0;
+    const wallOz = opts0.oz != null ? opts0.oz : 0;
+    if (walls && walls.length) {
+      walls.forEach((w) => {
+        placeAlongSegment(w.x1 - wallOx, w.y1 - wallOz, w.x2 - wallOx, w.y2 - wallOz);
+      });
+    } else {
+      // Parametric / no sketch walls: perimeter of rectangle only (no interior grid).
+      const inset = Math.min(1.0, Math.min(addL, addW) * 0.12);
+      const x0 = ax - addL / 2 + inset;
+      const x1 = ax + addL / 2 - inset;
+      const z0 = az - addW / 2 + inset;
+      const z1 = az + addW / 2 - inset;
+      placeAlongSegment(x0, z0, x1, z0);
+      placeAlongSegment(x0, z1, x1, z1);
+      placeAlongSegment(x0, z0, x0, z1);
+      placeAlongSegment(x1, z0, x1, z1);
+    }
+    const pierPositions = Array.from(pierMap.values());
+
+    pierPositions.forEach(([px, pz]) => {
+      const cyl = new THREE.Mesh(
+        new THREE.CylinderGeometry(PIER_R, PIER_R * 1.05, h, 16),
+        foundMat
+      );
+      cyl.position.set(px, h / 2, pz);
+      cyl.castShadow = true;
+      cyl.receiveShadow = true;
+      cyl.userData = { type: 'pier', label: 'Pier / sonotube' };
+      group.add(cyl);
+      const pad = new THREE.Mesh(
+        new THREE.CylinderGeometry(PIER_R * 1.6, PIER_R * 1.7, 0.25, 12),
+        foundMat
+      );
+      pad.position.set(px, 0.12, pz);
+      pad.receiveShadow = true;
+      pad.userData = { type: 'pier', label: 'Pier footing' };
+      group.add(pad);
+    });
+
+    // Grade beam along edge / wall lines (ring for footprint; segments when walls given)
     if (beamMat) {
       const beamH = 0.35;
       const beamY = h - beamH / 2;
-      const ring = [
-        [ax, az - addW / 2, addL + 0.3, 0.3],
-        [ax, az + addW / 2, addL + 0.3, 0.3],
-        [ax - addL / 2, az, 0.3, addW + 0.3],
-        [ax + addL / 2, az, 0.3, addW + 0.3],
-      ];
-      ring.forEach(([x, z, bw, bd]) => {
-        const m = new THREE.Mesh(new THREE.BoxGeometry(bw, beamH, bd), beamMat);
-        m.position.set(x, beamY, z);
-        m.castShadow = true;
-        m.userData = { type: 'gradeBeam', label: 'Grade beam' };
-        group.add(m);
-      });
+      const beamT = 0.3;
+      if (walls && walls.length) {
+        walls.forEach((w) => {
+          const x1 = w.x1 - wallOx, z1 = w.y1 - wallOz;
+          const x2 = w.x2 - wallOx, z2 = w.y2 - wallOz;
+          const len = Math.hypot(x2 - x1, z2 - z1);
+          if (len < 0.1) return;
+          const m = new THREE.Mesh(new THREE.BoxGeometry(len + 0.15, beamH, beamT), beamMat);
+          m.position.set((x1 + x2) / 2, beamY, (z1 + z2) / 2);
+          m.rotation.y = -Math.atan2(z2 - z1, x2 - x1);
+          m.castShadow = true;
+          m.userData = { type: 'gradeBeam', label: 'Grade beam' };
+          group.add(m);
+        });
+      } else {
+        const ring = [
+          [ax, az - addW / 2, addL + 0.3, beamT],
+          [ax, az + addW / 2, addL + 0.3, beamT],
+          [ax - addL / 2, az, beamT, addW + 0.3],
+          [ax + addL / 2, az, beamT, addW + 0.3],
+        ];
+        ring.forEach(([x, z, bw, bd]) => {
+          const m = new THREE.Mesh(new THREE.BoxGeometry(bw, beamH, bd), beamMat);
+          m.position.set(x, beamY, z);
+          m.castShadow = true;
+          m.userData = { type: 'gradeBeam', label: 'Grade beam' };
+          group.add(m);
+        });
+      }
     }
     return { pierH: h, count: pierPositions.length };
   }
@@ -1572,15 +1617,17 @@ function createView3D(container) {
   function addRoofGable(group, w, d, wallH, pitch, overhang, roofMat, tieIn) {
     const oh = overhang / 12;
     const W = w + oh * 2, D = d + oh * 2;
-    // Rise from BUILDING half-span (not eave-to-eave) so the roof surface at the
-    // wall line sits on the top plate. Overhang tip continues the slope downward.
+    // Rise from BUILDING half-span (not eave-to-eave) so wall-line clearance is correct.
+    // Underside at wall line = top plate (wallH); top surface = wallH + ROOF_THICK.
+    // Overhang tip continues the same pitch downward outside the walls.
     const alongZ = D >= W;
     const buildingHalf = alongZ ? (w / 2) : (d / 2);
     let rise = Math.max(0.15, buildingHalf * pitch);
     if (tieIn === 'flat' || tieIn === 'low-slope') rise = Math.max(0.5, Math.max(w, d) * 0.04);
     if (tieIn === 'dormer') rise = Math.max(rise, 3);
     const thick = ROOF_THICK;
-    const plateY = wallH; // top plate / bearing
+    const bearingY = wallH; // underside at wall line clears top plate / studs
+    const plateY = bearingY + thick; // TOP surface at wall line
     const ridgeY = plateY + rise;
     // Tip drops oh*pitch along the same slope (skip drop for flat/low-slope)
     const tipDrop = (tieIn === 'flat' || tieIn === 'low-slope') ? 0 : oh * pitch;
@@ -1638,16 +1685,17 @@ function createView3D(container) {
   function addRoofHip(group, w, d, wallH, pitch, overhang, roofMat, tieIn) {
     const oh = overhang / 12;
     const W = w + oh * 2, D = d + oh * 2;
-    // Rise from building half-span so wall-line sits on top plate; tip drops along slope.
+    // Underside at wall line = top plate; top = wallH + ROOF_THICK; tip drops outside.
     const buildingHalfMin = Math.min(w, d) / 2;
     let rise = Math.max(0.15, buildingHalfMin * pitch);
     if (tieIn === 'flat' || tieIn === 'low-slope') rise = Math.max(0.5, buildingHalfMin * 0.08);
     if (tieIn === 'dormer') rise = Math.max(rise, 3);
-    const plateY = wallH;
+    const thick = ROOF_THICK;
+    const bearingY = wallH;
+    const plateY = bearingY + thick; // TOP at wall line
     const tipDrop = (tieIn === 'flat' || tieIn === 'low-slope') ? 0 : oh * pitch;
     const eaveY = plateY - tipDrop;
     const ridgeY = plateY + rise;
-    const thick = ROOF_THICK;
     function addFace(corners, indices) {
       const verts = new Float32Array(corners.flat());
       const geo = new THREE.BufferGeometry();
@@ -2279,8 +2327,10 @@ function createView3D(container) {
         // Extra size beyond walls comes solely from eave_overhang_in (modest, clamped).
         // Vertical: eave/plate at maxWallH (addition top plate); pier lift raises group later.
         const ab = additionBounds(plan) || b;
-        const roofW = Math.max(ab.w, 1);
-        const roofD = Math.max(ab.d, 1);
+        // Bounds follow wall centerlines; expand by WALL_THICK so outer stud faces
+        // stay at/inside the wall-line bearing (not in the dropping overhang zone).
+        const roofW = Math.max(ab.w, 1) + WALL_THICK;
+        const roofD = Math.max(ab.d, 1) + WALL_THICK;
         const gRoof = new THREE.Group();
         gRoof.position.set(ab.cx - ox, 0, ab.cy - oz);
         gRoof.userData = { type: 'additionRoof' };
@@ -2323,7 +2373,11 @@ function createView3D(container) {
         const bb = planBounds(plan);
         if (bb && ft === 'piers') {
           const pierH = store.pier_height_ft > 0 ? store.pier_height_ft : PIER_H_DEFAULT;
-          addPierFoundation(0, 0, Math.max(bb.w, 6), Math.max(bb.d, 6), pierH, foundMat, beamMat, rootGroup);
+          addPierFoundation(0, 0, Math.max(bb.w, 6), Math.max(bb.d, 6), pierH, foundMat, beamMat, rootGroup, {
+            walls: plan.walls || [],
+            ox: ox,
+            oz: oz,
+          });
           // Elevate building content onto pier tops (leave ground/grid/piers)
           [...rootGroup.children].forEach((ch) => {
             if (!ch) return;
