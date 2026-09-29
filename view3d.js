@@ -594,23 +594,24 @@ function createView3D(container) {
   }
 
   function glassMaterial() {
-    // §2.4 dielectric glazing
+    // Tinted, slightly reflective glazing veneer over opaque pane
     return new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#A8C8E8'),
+      color: new THREE.Color('#5BA3D4'),
       transparent: true,
-      opacity: 0.22,
-      roughness: 0.08,
-      metalness: 0.0,
+      opacity: 0.55,
+      roughness: 0.06,
+      metalness: 0.4,
       side: THREE.DoubleSide,
       depthWrite: false,
     });
   }
 
   function frameMaterial() {
+    // Clean painted casing / sash — brighter + smoother than wall paint
     return new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#F2F0EA'),
-      roughness: 0.55,
-      metalness: 0.05,
+      color: new THREE.Color('#F8F6F1'),
+      roughness: 0.38,
+      metalness: 0.06,
     });
   }
 
@@ -1532,80 +1533,168 @@ function createView3D(container) {
     g.position.set(mx, 0, mz);
     g.rotation.y = -ang;
 
-    // Frame spans wall thickness; glass recessed 2–3 in from outer face (P0)
-    const depth = WALL_THICK + 0.06;
-    const trim = 0.14;
+    // Overlay window that reads on BOTH wall faces (local ±Z; exterior side varies by wall).
+    const depth = WALL_THICK + 0.1;
+    const trim = 0.16;
+    const jamb = 0.1;
     const cy = sill + hFt / 2;
     const outerZ = WALL_THICK / 2;
+    const narrow = !isDoor && wFt < 1.15;
 
-    const frame = new THREE.Mesh(
-      new THREE.BoxGeometry(wFt + trim * 2, hFt + trim * 2, depth),
-      frameMat
+    const paneMat = isDoor
+      ? mat(0x6b4a32, { roughness: 0.68, metalness: 0.06 })
+      : mat(0x2f6f9a, { roughness: 0.14, metalness: 0.32 });
+    const pane = new THREE.Mesh(
+      new THREE.BoxGeometry(Math.max(0.15, wFt - 0.04), Math.max(0.15, hFt - 0.04), depth),
+      paneMat
     );
-    frame.position.set(0, cy, 0);
-    frame.castShadow = true;
-    g.add(frame);
+    pane.position.set(0, cy, 0);
+    pane.castShadow = true;
+    g.add(pane);
 
-    const gw = Math.max(0.2, wFt - 0.12);
-    const gh = Math.max(0.2, hFt - 0.12);
-    const glassDepth = isDoor ? 0.07 : 0.05;
-    const glassZ = Math.max(0.02, outerZ - WIN_RECESS); // set back from cladding face
-    // Doors: opaque panel recessed like glass; windows: dielectric glazing
-    const panelMat = isDoor
-      ? mat(0x6b4a32, { roughness: 0.72, metalness: 0.05 })
-      : glassMat;
-    const glass = new THREE.Mesh(new THREE.BoxGeometry(gw, gh, glassDepth), panelMat);
+    const gw = Math.max(0.1, wFt - jamb * 2);
+    const gh = Math.max(0.1, hFt - jamb * 2);
+    const glassDepth = 0.04;
+    const glassZ = depth / 2 - 0.015;
+    const glass = new THREE.Mesh(new THREE.BoxGeometry(gw, gh, glassDepth), isDoor ? paneMat : glassMat);
     glass.position.set(0, cy, glassZ);
     g.add(glass);
-    const glass2 = new THREE.Mesh(new THREE.BoxGeometry(gw, gh, glassDepth), panelMat);
+    const glass2 = new THREE.Mesh(new THREE.BoxGeometry(gw, gh, glassDepth), isDoor ? paneMat : glassMat);
     glass2.position.set(0, cy, -glassZ);
     g.add(glass2);
 
-    // Projecting exterior sill (~1–1.5 in) under windows
-    if (!isDoor && sill > 0.05) {
-      const sillMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(wFt + trim * 2 + 0.1, 0.07, WALL_THICK + SILL_PROJ * 2),
+    // Casing on BOTH faces (exterior side depends on wall winding)
+    const casingT = 0.1;
+    const casingZ = outerZ + casingT / 2 + 0.02;
+    function addCasingPair(sign) {
+      const z = sign * casingZ;
+      const L = new THREE.Mesh(new THREE.BoxGeometry(trim, hFt + trim * 1.2, casingT), frameMat);
+      L.position.set(-(wFt / 2 + trim / 2), cy + trim * 0.05, z);
+      L.castShadow = true;
+      g.add(L);
+      const R = new THREE.Mesh(new THREE.BoxGeometry(trim, hFt + trim * 1.2, casingT), frameMat);
+      R.position.set(wFt / 2 + trim / 2, cy + trim * 0.05, z);
+      R.castShadow = true;
+      g.add(R);
+      const T = new THREE.Mesh(new THREE.BoxGeometry(wFt + trim * 2, trim, casingT), frameMat);
+      T.position.set(0, sill + hFt + trim / 2, z);
+      T.castShadow = true;
+      g.add(T);
+      // Bottom casing / stool under sill for windows; under door too as threshold cue
+      const B = new THREE.Mesh(
+        new THREE.BoxGeometry(wFt + trim * 2, isDoor ? trim * 0.55 : trim * 0.7, casingT),
         frameMat
       );
-      sillMesh.position.set(0, sill - 0.02, 0);
+      B.position.set(0, sill + (isDoor ? trim * 0.2 : -trim * 0.15), z);
+      B.castShadow = true;
+      g.add(B);
+      return { L, R, T, B };
+    }
+    const casA = addCasingPair(1);
+    const casB = addCasingPair(-1);
+    const frame = casA.T; // selection highlight target
+
+    // Projecting sill — extends both sides so either face reads a stool
+    let sillMesh = null;
+    let sillLip = null;
+    let sillLip2 = null;
+    if (!isDoor && sill > 0.05) {
+      const sillH = 0.13;
+      const sillDepth = WALL_THICK + SILL_PROJ * 2 + 0.18;
+      sillMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(wFt + trim * 2 + 0.16, sillH, sillDepth),
+        frameMat
+      );
+      sillMesh.position.set(0, sill - sillH * 0.15, 0);
       sillMesh.castShadow = true;
       sillMesh.userData = { type: 'windowSill', label: 'Window sill', winId };
       g.add(sillMesh);
-    }
-
-    // Mullion (windows) or door stile/handle hint (doors) — no muntin grids (P2 skip)
-    let mull;
-    if (isDoor) {
-      mull = new THREE.Mesh(
-        new THREE.BoxGeometry(0.06, Math.max(0.2, hFt * 0.25), depth * 0.55),
-        mat(0xc4a882, { roughness: 0.5, metalness: 0.35 })
-      );
-      mull.position.set(wFt * 0.32, cy, glassZ + 0.02);
-      g.add(mull);
-    } else {
-      mull = new THREE.Mesh(
-        new THREE.BoxGeometry(0.06, Math.max(0.15, hFt - 0.12), depth * 0.5),
+      sillLip = new THREE.Mesh(
+        new THREE.BoxGeometry(wFt + trim * 2 + 0.2, 0.05, 0.09),
         frameMat
       );
-      mull.position.set(0, cy, 0);
+      sillLip.position.set(0, sill + 0.025, outerZ + SILL_PROJ + 0.07);
+      sillLip.castShadow = true;
+      g.add(sillLip);
+      sillLip2 = new THREE.Mesh(
+        new THREE.BoxGeometry(wFt + trim * 2 + 0.2, 0.05, 0.09),
+        frameMat
+      );
+      sillLip2.position.set(0, sill + 0.025, -(outerZ + SILL_PROJ + 0.07));
+      sillLip2.castShadow = true;
+      g.add(sillLip2);
+    }
+
+    // Sash / mullion on BOTH faces
+    let mull = null;
+    let mull2 = null;
+    let mullH = null;
+    let mullH2 = null;
+    const mullD = 0.07;
+    const mullZ = glassZ + 0.02;
+    if (isDoor) {
+      mullH = new THREE.Mesh(
+        new THREE.BoxGeometry(Math.max(0.2, wFt - 0.2), 0.1, mullD),
+        mat(0x5a3d28, { roughness: 0.62, metalness: 0.08 })
+      );
+      mullH.position.set(0, sill + hFt * 0.4, mullZ);
+      g.add(mullH);
+      mull = new THREE.Mesh(
+        new THREE.BoxGeometry(0.07, Math.max(0.2, hFt * 0.28), 0.08),
+        mat(0xc4a882, { roughness: 0.48, metalness: 0.38 })
+      );
+      mull.position.set(wFt * 0.32, cy, mullZ + 0.02);
       g.add(mull);
+    } else {
+      const sashH = narrow ? 0.045 : 0.06;
+      mullH = new THREE.Mesh(new THREE.BoxGeometry(Math.max(0.08, gw), sashH, mullD), frameMat);
+      mullH.position.set(0, cy, mullZ);
+      g.add(mullH);
+      mullH2 = new THREE.Mesh(new THREE.BoxGeometry(Math.max(0.08, gw), sashH, mullD), frameMat);
+      mullH2.position.set(0, cy, -mullZ);
+      g.add(mullH2);
+      if (!narrow) {
+        mull = new THREE.Mesh(new THREE.BoxGeometry(0.07, Math.max(0.1, gh), mullD), frameMat);
+        mull.position.set(0, cy, mullZ);
+        g.add(mull);
+        mull2 = new THREE.Mesh(new THREE.BoxGeometry(0.07, Math.max(0.1, gh), mullD), frameMat);
+        mull2.position.set(0, cy, -mullZ);
+        g.add(mull2);
+      }
     }
 
     if (winId) {
-      // Clone materials so selection highlight is per-window
       frame.material = frameMat.clone();
-      glass.material = panelMat.clone ? panelMat.clone() : panelMat;
+      const share = frame.material;
+      pane.material = paneMat.clone ? paneMat.clone() : paneMat;
+      glass.material = isDoor ? pane.material : (glassMat.clone ? glassMat.clone() : glassMat);
       glass2.material = glass.material;
-      mull.material = isDoor ? mull.material.clone() : frame.material;
-      const openType = opts.openingType || (isDoor ? 'door' : 'window');
-      g.userData = { type: 'window', winId, openingType: openType };
-      glass.userData = { type: 'window', winId, openingType: openType };
-      glass2.userData = { type: 'window', winId, openingType: openType };
-      frame.userData = { type: 'window', winId, openingType: openType };
-      if (mull) mull.userData = { type: 'window', winId, openingType: openType };
-      interactiveObjects.push(glass, glass2, frame);
+      const frameParts = [
+        casA.L, casA.R, casA.T, casA.B, casB.L, casB.R, casB.T, casB.B,
+        sillMesh, sillLip, sillLip2, mullH, mullH2, mull, mull2,
+      ];
+      frameParts.forEach((m) => {
+        if (!m) return;
+        if (isDoor && (m === mull || m === mullH)) return;
+        m.material = share;
+      });
+      if (isDoor) {
+        if (mull) mull.material = mull.material.clone();
+        if (mullH) mullH.material = mullH.material.clone();
+      }
 
-      // Resize handles (local space): left, right, top
+      const openType = opts.openingType || (isDoor ? 'door' : 'window');
+      const tag = { type: 'window', winId, openingType: openType };
+      g.userData = tag;
+      [pane, glass, glass2, frame, casA.L, casA.R, casA.T, casA.B, casB.L, casB.R, casB.T, casB.B,
+        mull, mull2, mullH, mullH2, sillMesh, sillLip, sillLip2].forEach((m) => {
+        if (m) m.userData = tag;
+      });
+      interactiveObjects.push(pane, glass, glass2, casA.L, casA.R, casA.T, casB.L, casB.R, casB.T);
+      if (sillMesh) interactiveObjects.push(sillMesh);
+      if (mullH) interactiveObjects.push(mullH);
+      if (mull) interactiveObjects.push(mull);
+
       const handleMat = mat(0x2f6f6a, { emissive: 0x1a3d3a, emissiveIntensity: 0.25 });
       const hk = 0.28;
       const leftH = new THREE.Mesh(new THREE.BoxGeometry(hk, hk, hk), handleMat);
@@ -1623,10 +1712,15 @@ function createView3D(container) {
       g.add(leftH, rightH, topH);
       interactiveObjects.push(leftH, rightH, topH);
 
-      // Opening group only — studs / RO framing live under framingRoot, never here
       windowMeshes.set(winId, {
-        group: g, glass, glass2, frame, mull, leftH, rightH, topH, wFt, hFt, sill,
+        group: g, glass, glass2, frame, pane,
+        mull, mull2, mullH, mullH2,
+        casingL: casA.L, casingR: casA.R, casingTop: casA.T, casingBot: casA.B,
+        casingL2: casB.L, casingR2: casB.R, casingTop2: casB.T, casingBot2: casB.B,
+        sillMesh, sillLip, sillLip2,
+        leftH, rightH, topH, wFt, hFt, sill,
         openingType: opts.openingType || (isDoor ? 'door' : 'window'),
+        narrow,
       });
     }
 
@@ -3233,19 +3327,43 @@ function createView3D(container) {
     if (!sizeChanged) return true;
 
     // Resize opening contents in place — do not touch framingRoot / studs
-    const depth = WALL_THICK + 0.06;
-    const trim = 0.14;
+    const depth = WALL_THICK + 0.1;
+    const trim = 0.16;
+    const jamb = 0.1;
     const cy = sill + hFt / 2;
-    const gw = Math.max(0.2, wFt - 0.12);
-    const gh = Math.max(0.2, hFt - 0.12);
-    const glassDepth = 0.05;
-    const glassZ = Math.max(0.02, WALL_THICK / 2 - WIN_RECESS);
+    const outerZ = WALL_THICK / 2;
+    const gw = Math.max(0.1, wFt - jamb * 2);
+    const gh = Math.max(0.1, hFt - jamb * 2);
+    const isDoor = rec.openingType === 'door' || rec.openingType === 'large';
+    const narrow = !isDoor && wFt < 1.15;
+    const glassDepth = 0.04;
+    const glassZ = depth / 2 - 0.015;
+    const casingT = 0.1;
+    const casingZ = outerZ + casingT / 2 + 0.02;
+    const mullD = 0.07;
+    const mullZ = glassZ + 0.02;
     const hk = 0.28;
 
-    if (rec.frame) {
-      rec.frame.geometry.dispose();
-      rec.frame.geometry = new THREE.BoxGeometry(wFt + trim * 2, hFt + trim * 2, depth);
-      rec.frame.position.set(0, cy, 0);
+    function resizeCasing(mesh, kind, sign) {
+      if (!mesh) return;
+      const z = sign * casingZ;
+      mesh.geometry.dispose();
+      if (kind === 'L' || kind === 'R') {
+        mesh.geometry = new THREE.BoxGeometry(trim, hFt + trim * 1.2, casingT);
+        mesh.position.set((kind === 'L' ? -1 : 1) * (wFt / 2 + trim / 2), cy + trim * 0.05, z);
+      } else if (kind === 'T') {
+        mesh.geometry = new THREE.BoxGeometry(wFt + trim * 2, trim, casingT);
+        mesh.position.set(0, sill + hFt + trim / 2, z);
+      } else {
+        mesh.geometry = new THREE.BoxGeometry(wFt + trim * 2, isDoor ? trim * 0.55 : trim * 0.7, casingT);
+        mesh.position.set(0, sill + (isDoor ? trim * 0.2 : -trim * 0.15), z);
+      }
+    }
+
+    if (rec.pane) {
+      rec.pane.geometry.dispose();
+      rec.pane.geometry = new THREE.BoxGeometry(Math.max(0.15, wFt - 0.04), Math.max(0.15, hFt - 0.04), depth);
+      rec.pane.position.set(0, cy, 0);
     }
     if (rec.glass) {
       rec.glass.geometry.dispose();
@@ -3257,10 +3375,71 @@ function createView3D(container) {
       rec.glass2.geometry = new THREE.BoxGeometry(gw, gh, glassDepth);
       rec.glass2.position.set(0, cy, -glassZ);
     }
+    resizeCasing(rec.casingL, 'L', 1);
+    resizeCasing(rec.casingR, 'R', 1);
+    resizeCasing(rec.casingTop, 'T', 1);
+    resizeCasing(rec.casingBot, 'B', 1);
+    resizeCasing(rec.casingL2, 'L', -1);
+    resizeCasing(rec.casingR2, 'R', -1);
+    resizeCasing(rec.casingTop2, 'T', -1);
+    resizeCasing(rec.casingBot2, 'B', -1);
+    if (rec.sillMesh) {
+      const sillH = 0.13;
+      const sillDepth = WALL_THICK + SILL_PROJ * 2 + 0.18;
+      rec.sillMesh.geometry.dispose();
+      rec.sillMesh.geometry = new THREE.BoxGeometry(wFt + trim * 2 + 0.16, sillH, sillDepth);
+      rec.sillMesh.position.set(0, sill - sillH * 0.15, 0);
+    }
+    if (rec.sillLip) {
+      rec.sillLip.geometry.dispose();
+      rec.sillLip.geometry = new THREE.BoxGeometry(wFt + trim * 2 + 0.2, 0.05, 0.09);
+      rec.sillLip.position.set(0, sill + 0.025, outerZ + SILL_PROJ + 0.07);
+    }
+    if (rec.sillLip2) {
+      rec.sillLip2.geometry.dispose();
+      rec.sillLip2.geometry = new THREE.BoxGeometry(wFt + trim * 2 + 0.2, 0.05, 0.09);
+      rec.sillLip2.position.set(0, sill + 0.025, -(outerZ + SILL_PROJ + 0.07));
+    }
+    const sashH = narrow ? 0.045 : 0.06;
+    if (rec.mullH) {
+      rec.mullH.geometry.dispose();
+      if (isDoor) {
+        rec.mullH.geometry = new THREE.BoxGeometry(Math.max(0.2, wFt - 0.2), 0.1, mullD);
+        rec.mullH.position.set(0, sill + hFt * 0.4, mullZ);
+      } else {
+        rec.mullH.geometry = new THREE.BoxGeometry(Math.max(0.08, gw), sashH, mullD);
+        rec.mullH.position.set(0, cy, mullZ);
+      }
+    }
+    if (rec.mullH2) {
+      rec.mullH2.geometry.dispose();
+      rec.mullH2.geometry = new THREE.BoxGeometry(Math.max(0.08, gw), sashH, mullD);
+      rec.mullH2.position.set(0, cy, -mullZ);
+      rec.mullH2.visible = !isDoor;
+    }
     if (rec.mull) {
       rec.mull.geometry.dispose();
-      rec.mull.geometry = new THREE.BoxGeometry(0.06, Math.max(0.15, hFt - 0.12), depth * 0.5);
-      rec.mull.position.set(0, cy, 0);
+      if (isDoor) {
+        rec.mull.geometry = new THREE.BoxGeometry(0.07, Math.max(0.2, hFt * 0.28), 0.08);
+        rec.mull.position.set(wFt * 0.32, cy, mullZ + 0.02);
+        rec.mull.visible = true;
+      } else if (narrow) {
+        rec.mull.visible = false;
+      } else {
+        rec.mull.geometry = new THREE.BoxGeometry(0.07, Math.max(0.1, gh), mullD);
+        rec.mull.position.set(0, cy, mullZ);
+        rec.mull.visible = true;
+      }
+    }
+    if (rec.mull2) {
+      if (narrow || isDoor) {
+        rec.mull2.visible = false;
+      } else {
+        rec.mull2.geometry.dispose();
+        rec.mull2.geometry = new THREE.BoxGeometry(0.07, Math.max(0.1, gh), mullD);
+        rec.mull2.position.set(0, cy, -mullZ);
+        rec.mull2.visible = true;
+      }
     }
     if (rec.leftH) rec.leftH.position.set(-wFt / 2 - 0.08, cy, depth * 0.55);
     if (rec.rightH) rec.rightH.position.set(wFt / 2 + 0.08, cy, depth * 0.55);
@@ -3269,6 +3448,7 @@ function createView3D(container) {
     rec.wFt = wFt;
     rec.hFt = hFt;
     rec.sill = sill;
+    rec.narrow = narrow;
     return true;
   }
 

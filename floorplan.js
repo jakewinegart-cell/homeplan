@@ -1393,21 +1393,54 @@
           ctx.stroke();
           ctx.setLineDash([]);
         } else {
-          const nx = -Math.sin(ang) * 0.55;
-          const ny = Math.cos(ang) * 0.55;
-          const n1 = toScreen(mx + nx, my + ny);
-          const n2 = toScreen(mx - nx, my - ny);
+          // Richer 2D window: frame rectangle + glass fill + optional mullion
+          const halfT = 0.28; // frame thickness perpendicular to wall (world ft)
+          const nx = -Math.sin(ang) * halfT;
+          const ny = Math.cos(ang) * halfT;
+          const a1 = toScreen(mx - px + nx, my - py + ny);
+          const a2 = toScreen(mx + px + nx, my + py + ny);
+          const b1 = toScreen(mx - px - nx, my - py - ny);
+          const b2 = toScreen(mx + px - nx, my + py - ny);
+          ctx.fillStyle = sel ? 'rgba(47,111,106,0.22)' : 'rgba(90,155,200,0.32)';
+          ctx.beginPath();
+          ctx.moveTo(a1.x, a1.y);
+          ctx.lineTo(a2.x, a2.y);
+          ctx.lineTo(b2.x, b2.y);
+          ctx.lineTo(b1.x, b1.y);
+          ctx.closePath();
+          ctx.fill();
           ctx.strokeStyle = sel ? '#2f6f6a' : '#3d6b9a';
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.moveTo(s1.x, s1.y);
-          ctx.lineTo(s2.x, s2.y);
+          ctx.lineWidth = sel ? 2.5 : 2;
           ctx.stroke();
-          ctx.lineWidth = 2;
+          // Inner glass edge cue
+          const inset = 0.12;
+          const ix = -Math.sin(ang) * (halfT - inset);
+          const iy = Math.cos(ang) * (halfT - inset);
+          const ipx = Math.cos(ang) * Math.max(0.15, half - 0.15);
+          const ipy = Math.sin(ang) * Math.max(0.15, half - 0.15);
+          const ia1 = toScreen(mx - ipx + ix, my - ipy + iy);
+          const ia2 = toScreen(mx + ipx + ix, my + ipy + iy);
+          const ib1 = toScreen(mx - ipx - ix, my - ipy - iy);
+          const ib2 = toScreen(mx + ipx - ix, my + ipy - iy);
+          ctx.strokeStyle = sel ? '#2f6f6a' : '#5a8ab0';
+          ctx.lineWidth = 1.25;
           ctx.beginPath();
-          ctx.moveTo(n1.x, n1.y);
-          ctx.lineTo(n2.x, n2.y);
+          ctx.moveTo(ia1.x, ia1.y);
+          ctx.lineTo(ia2.x, ia2.y);
+          ctx.lineTo(ib2.x, ib2.y);
+          ctx.lineTo(ib1.x, ib1.y);
+          ctx.closePath();
           ctx.stroke();
+          // Center mullion when wide enough (skip on narrow 8×24)
+          if ((win.widthFt || DEFAULT_WIN_WIDTH_FT) >= 1.2) {
+            const c1 = toScreen(mx + nx * 0.85, my + ny * 0.85);
+            const c2 = toScreen(mx - nx * 0.85, my - ny * 0.85);
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(c1.x, c1.y);
+            ctx.lineTo(c2.x, c2.y);
+            ctx.stroke();
+          }
         }
       }
 
