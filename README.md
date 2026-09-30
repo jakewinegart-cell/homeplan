@@ -1,4 +1,4 @@
-**3D / roof height (`?v=roof3`):** addition roof **underside** at wall line sits on / above top plate (`max` wall `heightFt`); top surface = plate + roof thickness; overhang tip may drop along pitch outside walls. Rise from building half-span; footprint = addition bounds + wall thickness + clamped eave. Pier lift still raises roof with structure. Piers / sonotubes only under **wall edges** (corners + perimeter), never mid-span.
+**3D / piers (`?v=piers1`):** editable pier height / spacing / diameter / count · **roof height (`?v=roof3`):** addition roof **underside** at wall line sits on / above top plate (`max` wall `heightFt`); top surface = plate + roof thickness; overhang tip may drop along pitch outside walls. Rise from building half-span; footprint = addition bounds + wall thickness + clamped eave. Pier lift still raises roof with structure. Piers / sonotubes only under **wall edges** (corners + perimeter), never mid-span.
 
 
 # HomePlan — Remodel & Additions (prototype)
@@ -65,10 +65,11 @@ Orbit: drag · zoom: scroll · pan: right-drag.
 - Locked muted footprint on Plan (not selectable). Plan tool **House** reopens the prompt.
 - Saved with project; shown in 3D as distinct mass.
 
-## Foundation (E21 / piers)
+## Foundation (E21 / piers) — `?v=piers1`
 - Plan toolbar **Foundation** (under **Existing**) and 3D **Foundation** button open the same picker as Guidance **E21**.
-- Options: slab, crawl space, basement, **Piers / sonotubes** (elevated — also called pylons), match house. Stored value for piers is always `piers`.
-- Selecting updates Guidance answers, persists with Save, and rebuilds 3D (piers raise the addition on sonotubes). **Piers only under wall edges** (corners + along exterior/bearing lines ~6 ft o.c.) — never mid-span under open floor; grade beam follows those edge lines.
+- Options: slab, crawl space, basement, **Piers / sonotubes** (elevated — also called pylons / pilons), match house. Stored value for piers is always `piers`.
+- Selecting updates Guidance answers, persists with Save, and rebuilds 3D (piers raise the addition on sonotubes). **Piers only under wall edges** (corners + along exterior/bearing lines) — never mid-span under open floor; grade beam follows those edge lines.
+- **Piers / pylons panel** (`piers1`): when foundation is piers, editable dials for **Height** (`pier_height_ft`, default ~2.5), **Spacing o.c.** (`pier_spacing_ft`, default ~6), **Diameter** (`pier_diameter_in`, default 12 → cylinder radius), and optional **Count** (`pier_count` — blank = spacing-driven; set count to redistribute along wall edges). Shown in the Foundation picker and as a 3D side panel.
 - Guidance Section **E** shows when A1 is addition (or both / unsure); remodel-only hides E until Foundation is set from Plan or project type changes. Soft-sets A1 → addition when you pick a foundation type.
 - Wizard phrases (`piers`, `sonotubes`, `pylons`, `elevated`) still map to `foundation_type: piers`.
 

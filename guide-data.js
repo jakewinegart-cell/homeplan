@@ -668,6 +668,36 @@
       foundation_type = 'piers';
     }
 
+    // Pier / pylon dials (EXAMPLE defaults matching current 3D visuals)
+    let pier_height_ft = Number(a.pier_height_ft);
+    if (!(pier_height_ft > 0) || !Number.isFinite(pier_height_ft)) {
+      pier_height_ft = 2.5;
+      if (foundation_type === 'piers') defaultsUsed.push('pier_height_ft');
+    } else if (pier_height_ft < 1) pier_height_ft = 1;
+    else if (pier_height_ft > 12) pier_height_ft = 12;
+
+    let pier_spacing_ft = Number(a.pier_spacing_ft);
+    if (!(pier_spacing_ft > 0) || !Number.isFinite(pier_spacing_ft)) {
+      pier_spacing_ft = 6;
+      if (foundation_type === 'piers') defaultsUsed.push('pier_spacing_ft');
+    } else if (pier_spacing_ft < 2) pier_spacing_ft = 2;
+    else if (pier_spacing_ft > 20) pier_spacing_ft = 20;
+
+    let pier_diameter_in = Number(a.pier_diameter_in);
+    if (!(pier_diameter_in > 0) || !Number.isFinite(pier_diameter_in)) {
+      pier_diameter_in = 12;
+      if (foundation_type === 'piers') defaultsUsed.push('pier_diameter_in');
+    } else if (pier_diameter_in < 6) pier_diameter_in = 6;
+    else if (pier_diameter_in > 36) pier_diameter_in = 36;
+
+    let pier_count = Number(a.pier_count);
+    if (!(pier_count > 0) || !Number.isFinite(pier_count)) pier_count = 0;
+    else {
+      pier_count = Math.round(pier_count);
+      if (pier_count < 4) pier_count = 4;
+      else if (pier_count > 80) pier_count = 80;
+    }
+
     let roof_tie_in = S(a, 'F24') || 'separate';
     if (!S(a, 'F24')) defaultsUsed.push('roof_tie_in');
 
@@ -708,6 +738,10 @@
       large_opening_w_ft,
       large_opening_h_ft: 6 + 8 / 12,
       foundation_type,
+      pier_height_ft,
+      pier_spacing_ft,
+      pier_diameter_in,
+      pier_count,
       site_grade: S(a, 'E22') || 'flat',
       floor_align: S(a, 'E23') || 'yes',
       roof_tie_in,

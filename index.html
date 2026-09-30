@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>HomePlan — Remodel & Additions</title>
-  <link rel="stylesheet" href="styles.css?v=truss2" />
+  <link rel="stylesheet" href="styles.css?v=piers1" />
 </head>
 <body>
   <div id="app">
@@ -367,6 +367,26 @@
               </label>
               <button type="button" class="btn btn-sm btn-accent v3d-insp-done" id="v3d-win-done">Done</button>
             </aside>
+            <aside id="view3d-pier-panel" class="view3d-pier-panel" hidden>
+              <div class="v3d-insp-head">
+                <strong>Piers / pylons</strong>
+                <button type="button" class="v3d-insp-close" id="v3d-pier-close" aria-label="Close pier panel">×</button>
+              </div>
+              <p class="muted small">Edge-only under walls · EXAMPLE — not engineering. Also called sonotubes / pilons.</p>
+              <label class="v3d-field">Height (ft)
+                <input type="number" id="v3d-pier-height" min="1" max="12" step="0.25" value="2.5" />
+              </label>
+              <label class="v3d-field">Spacing o.c. (ft)
+                <input type="number" id="v3d-pier-spacing" min="2" max="20" step="0.5" value="6" />
+              </label>
+              <label class="v3d-field">Diameter (in)
+                <input type="number" id="v3d-pier-diameter" min="6" max="36" step="1" value="12" />
+              </label>
+              <label class="v3d-field">Count <span class="muted">(blank = spacing)</span>
+                <input type="number" id="v3d-pier-count" min="4" max="80" step="1" placeholder="auto" />
+              </label>
+              <button type="button" class="btn btn-sm btn-accent v3d-insp-done" id="v3d-pier-apply">Update 3D</button>
+            </aside>
           </div>
           <div id="view3d-empty" class="view3d-empty" hidden>
             <strong>Nothing to show in 3D yet</strong>
@@ -538,6 +558,25 @@
         </div>
       </div>
 
+      <div class="roof-picker-section pier-controls-section" id="pier-controls-section" hidden>
+        <div class="roof-picker-label">Piers / pylons</div>
+        <p class="muted small pier-controls-help">Dial how many, how far apart, how big, and how high. Piers (also called pylons / sonotubes) sit under <strong>wall edges only</strong> — corners + exterior lines, never mid-span under open floor. Grade beam follows those edges. EXAMPLE spacing — not engineering.</p>
+        <div class="wall-height-fields pier-fields">
+          <label class="wall-height-field">Height (ft)
+            <input type="number" id="pier-height-ft" inputmode="decimal" min="1" max="12" step="0.25" value="2.5" />
+          </label>
+          <label class="wall-height-field">Spacing o.c. (ft)
+            <input type="number" id="pier-spacing-ft" inputmode="decimal" min="2" max="20" step="0.5" value="6" />
+          </label>
+          <label class="wall-height-field">Diameter (in)
+            <input type="number" id="pier-diameter-in" inputmode="decimal" min="6" max="36" step="1" value="12" />
+          </label>
+          <label class="wall-height-field">Count <span class="muted" style="font-weight:500">(optional — leave blank for spacing)</span>
+            <input type="number" id="pier-count" inputmode="numeric" min="4" max="80" step="1" placeholder="auto" />
+          </label>
+        </div>
+      </div>
+
       <div class="btn-row" style="margin-top:1rem">
         <button type="button" class="btn btn-ghost" id="foundation-picker-cancel">Cancel</button>
         <button type="button" class="btn btn-accent" id="foundation-picker-apply">Apply</button>
@@ -655,11 +694,11 @@
     }
   }
   </script>
-  <script src="walkthrough-data.js?v=truss2"></script>
-  <script src="guide-data.js?v=truss2"></script>
-  <script src="floorplan.js?v=truss2"></script>
-  <script src="wizard-data.js?v=truss2"></script>
-  <script type="module" src="view3d.js?v=truss2"></script>
-  <script src="app.js?v=truss2"></script>
+  <script src="walkthrough-data.js?v=piers1"></script>
+  <script src="guide-data.js?v=piers1"></script>
+  <script src="floorplan.js?v=piers1"></script>
+  <script src="wizard-data.js?v=piers1"></script>
+  <script type="module" src="view3d.js?v=piers1"></script>
+  <script src="app.js?v=piers1"></script>
 </body>
 </html>

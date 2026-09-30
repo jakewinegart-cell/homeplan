@@ -149,9 +149,11 @@
     if (name === 'view3d') {
       ensure3D();
       rebuild3D(true);
+      pierPanelDismissed = false;
     }
     if (name === 'materials') renderMaterials();
     if (name === 'walkthrough') renderWalkthrough();
+    if (typeof refreshPierPanelVisibility === 'function') refreshPierPanelVisibility();
   }
 
   function schedule3DRebuild() {
@@ -771,7 +773,9 @@
     piers: 'Piers / sonotubes',
     match: 'Match house',
   };
+  const PIER_DEFAULTS = { height: 2.5, spacing: 6, diameter: 12 };
   let foundationPickerType = 'slab';
+  let pierPanelDismissed = false;
 
   function hasAdditionFootprintContext() {
     const a1 = qaAnswers && qaAnswers.A1;
@@ -792,6 +796,132 @@
     return t;
   }
 
+  function readPierFieldsFromAnswers() {
+    const h = Number(qaAnswers.pier_height_ft);
+    const s = Number(qaAnswers.pier_spacing_ft);
+    const d = Number(qaAnswers.pier_diameter_in);
+    const c = Number(qaAnswers.pier_count);
+    return {
+      height: (h > 0 && Number.isFinite(h)) ? h : PIER_DEFAULTS.height,
+      spacing: (s > 0 && Number.isFinite(s)) ? s : PIER_DEFAULTS.spacing,
+      diameter: (d > 0 && Number.isFinite(d)) ? d : PIER_DEFAULTS.diameter,
+      count: (c > 0 && Number.isFinite(c)) ? Math.round(c) : '',
+    };
+  }
+
+  function writePierFieldsToAnswers(vals) {
+    const wiz = window.HomePlanWizard;
+    const apply = (id, v) => {
+      if (wiz && wiz.applyFieldToAnswers) wiz.applyFieldToAnswers(qaAnswers, id, v);
+      else if (v === '' || v == null) delete qaAnswers[id];
+      else qaAnswers[id] = v;
+    };
+    apply('pier_height_ft', vals.height);
+    apply('pier_spacing_ft', vals.spacing);
+    apply('pier_diameter_in', vals.diameter);
+    apply('pier_count', vals.count === '' || vals.count == null ? '' : vals.count);
+  }
+
+  function readPierInputsFromModal() {
+    const hEl = document.getElementById('pier-height-ft');
+    const sEl = document.getElementById('pier-spacing-ft');
+    const dEl = document.getElementById('pier-diameter-in');
+    const cEl = document.getElementById('pier-count');
+    const h = hEl ? parseFloat(hEl.value) : PIER_DEFAULTS.height;
+    const s = sEl ? parseFloat(sEl.value) : PIER_DEFAULTS.spacing;
+    const d = dEl ? parseFloat(dEl.value) : PIER_DEFAULTS.diameter;
+    const cRaw = cEl ? cEl.value.trim() : '';
+    const c = cRaw === '' ? '' : parseInt(cRaw, 10);
+    return {
+      height: Number.isFinite(h) && h > 0 ? h : PIER_DEFAULTS.height,
+      spacing: Number.isFinite(s) && s > 0 ? s : PIER_DEFAULTS.spacing,
+      diameter: Number.isFinite(d) && d > 0 ? d : PIER_DEFAULTS.diameter,
+      count: (c !== '' && Number.isFinite(c) && c > 0) ? c : '',
+    };
+  }
+
+  function syncPierInputsToModal(vals) {
+    const v = vals || readPierFieldsFromAnswers();
+    const hEl = document.getElementById('pier-height-ft');
+    const sEl = document.getElementById('pier-spacing-ft');
+    const dEl = document.getElementById('pier-diameter-in');
+    const cEl = document.getElementById('pier-count');
+    if (hEl) hEl.value = v.height;
+    if (sEl) sEl.value = v.spacing;
+    if (dEl) dEl.value = v.diameter;
+    if (cEl) cEl.value = v.count === '' || v.count == null ? '' : v.count;
+  }
+
+  function syncPierInputsTo3dPanel(vals) {
+    const v = vals || readPierFieldsFromAnswers();
+    const hEl = document.getElementById('v3d-pier-height');
+    const sEl = document.getElementById('v3d-pier-spacing');
+    const dEl = document.getElementById('v3d-pier-diameter');
+    const cEl = document.getElementById('v3d-pier-count');
+    if (hEl) hEl.value = v.height;
+    if (sEl) sEl.value = v.spacing;
+    if (dEl) dEl.value = v.diameter;
+    if (cEl) cEl.value = v.count === '' || v.count == null ? '' : v.count;
+  }
+
+  function readPierInputsFrom3dPanel() {
+    const hEl = document.getElementById('v3d-pier-height');
+    const sEl = document.getElementById('v3d-pier-spacing');
+    const dEl = document.getElementById('v3d-pier-diameter');
+    const cEl = document.getElementById('v3d-pier-count');
+    const h = hEl ? parseFloat(hEl.value) : PIER_DEFAULTS.height;
+    const s = sEl ? parseFloat(sEl.value) : PIER_DEFAULTS.spacing;
+    const d = dEl ? parseFloat(dEl.value) : PIER_DEFAULTS.diameter;
+    const cRaw = cEl ? cEl.value.trim() : '';
+    const c = cRaw === '' ? '' : parseInt(cRaw, 10);
+    return {
+      height: Number.isFinite(h) && h > 0 ? h : PIER_DEFAULTS.height,
+      spacing: Number.isFinite(s) && s > 0 ? s : PIER_DEFAULTS.spacing,
+      diameter: Number.isFinite(d) && d > 0 ? d : PIER_DEFAULTS.diameter,
+      count: (c !== '' && Number.isFinite(c) && c > 0) ? c : '',
+    };
+  }
+
+  function refreshPierPanelVisibility() {
+    const panel = document.getElementById('view3d-pier-panel');
+    if (!panel) return;
+    const onPiers = currentFoundationType() === 'piers';
+    const view3dActive = document.getElementById('view-view3d')
+      && !document.getElementById('view-view3d').hidden;
+    if (onPiers && view3dActive && !pierPanelDismissed) {
+      panel.hidden = false;
+      syncPierInputsTo3dPanel();
+    } else if (!onPiers) {
+      panel.hidden = true;
+      pierPanelDismissed = false;
+    } else if (!view3dActive) {
+      // keep state; hide while off 3D
+      panel.hidden = true;
+    } else {
+      panel.hidden = true;
+    }
+  }
+
+  function applyPierDialValues(vals, opts) {
+    const o = opts || {};
+    writePierFieldsToAnswers(vals);
+    syncPierInputsToModal(vals);
+    syncPierInputsTo3dPanel(vals);
+    refreshFoundationChrome();
+    schedule3DRebuild();
+    walkthroughDirty = true;
+    if (els.saveStatus) els.saveStatus.textContent = 'Unsaved changes — click Save to keep them.';
+    if (!o.silent) {
+      const bits = [
+        vals.height + ' ft high',
+        vals.spacing + ' ft o.c.',
+        vals.diameter + ' in dia',
+      ];
+      if (vals.count) bits.push(vals.count + ' count');
+      showToast('Piers / pylons · ' + bits.join(' · '));
+    }
+  }
+
   function refreshFoundationChrome() {
     const hint = document.getElementById('foundation-hint');
     const btn = document.getElementById('btn-foundation');
@@ -799,17 +929,23 @@
     const t = currentFoundationType();
     const label = FOUNDATION_LABELS[t] || t;
     if (hint) {
-      hint.textContent = t === 'piers' ? 'Piers · elevated' : label;
+      if (t === 'piers') {
+        const v = readPierFieldsFromAnswers();
+        hint.textContent = 'Piers · ' + v.height + ' ft · ' + v.spacing + ' o.c.';
+      } else {
+        hint.textContent = label;
+      }
     }
     if (btn) {
       btn.classList.toggle('has-foundation', !!qaAnswers.E21);
       btn.classList.toggle('foundation-piers', t === 'piers');
-      btn.title = 'Foundation — ' + label + (t === 'piers' ? ' (elevated / pylons)' : '');
+      btn.title = 'Foundation — ' + label + (t === 'piers' ? ' (elevated / pylons — edit height, spacing, size)' : '');
     }
     if (btn3d) {
       btn3d.textContent = t === 'piers' ? 'Piers' : ('Fdn · ' + (FOUNDATION_LABELS[t] || t));
       btn3d.classList.toggle('active-foundation', t === 'piers');
     }
+    refreshPierPanelVisibility();
   }
 
   function syncFoundationPickerUI() {
@@ -822,6 +958,11 @@
       const showNote = remodelOnly && !hasAdditionFootprintContext();
       note.hidden = !showNote;
     }
+    const pierSec = document.getElementById('pier-controls-section');
+    if (pierSec) {
+      pierSec.hidden = foundationPickerType !== 'piers';
+      if (foundationPickerType === 'piers') syncPierInputsToModal();
+    }
   }
 
   function openFoundationPicker() {
@@ -829,6 +970,7 @@
     if (!modal) return;
     foundationPickerType = currentFoundationType();
     if (!FOUNDATION_LABELS[foundationPickerType]) foundationPickerType = 'slab';
+    syncPierInputsToModal();
     syncFoundationPickerUI();
     modal.hidden = false;
   }
@@ -846,6 +988,10 @@
     } else {
       qaAnswers.E21 = type;
     }
+    if (type === 'piers') {
+      writePierFieldsToAnswers(readPierInputsFromModal());
+      pierPanelDismissed = false;
+    }
     // Soft-align toward addition so Guidance Section E / 3D foundation stay available
     if (!qaAnswers.A1 || qaAnswers.A1 === 'remodel') {
       qaAnswers.A1 = 'addition';
@@ -862,14 +1008,28 @@
     }
     if (els.saveStatus) els.saveStatus.textContent = 'Unsaved changes — click Save to keep them.';
     const label = FOUNDATION_LABELS[type] || type;
-    showToast('Foundation · ' + label + (type === 'piers' ? ' (elevated)' : ''));
+    if (type === 'piers') {
+      const v = readPierFieldsFromAnswers();
+      showToast('Foundation · Piers / pylons · ' + v.height + ' ft · ' + v.spacing + ' o.c. · ' + v.diameter + ' in');
+    } else {
+      showToast('Foundation · ' + label);
+    }
   }
 
   function initFoundationPicker() {
     const btn = document.getElementById('btn-foundation');
     const btn3d = document.getElementById('btn-foundation-3d');
     if (btn) btn.addEventListener('click', openFoundationPicker);
-    if (btn3d) btn3d.addEventListener('click', openFoundationPicker);
+    if (btn3d) {
+      btn3d.addEventListener('click', () => {
+        if (currentFoundationType() === 'piers') {
+          // Re-open pier panel on 3D if dismissed; also open foundation picker for full controls
+          pierPanelDismissed = false;
+          refreshPierPanelVisibility();
+        }
+        openFoundationPicker();
+      });
+    }
     const apply = document.getElementById('foundation-picker-apply');
     const cancel = document.getElementById('foundation-picker-cancel');
     const backdrop = document.getElementById('foundation-picker-backdrop');
@@ -882,6 +1042,52 @@
         syncFoundationPickerUI();
       });
     });
+
+    // Live dial from foundation modal while on piers (Jake: see 3D update)
+    let pierDialTimer = null;
+    function livePierFromModal() {
+      if (foundationPickerType !== 'piers') return;
+      clearTimeout(pierDialTimer);
+      pierDialTimer = setTimeout(() => {
+        applyPierDialValues(readPierInputsFromModal(), { silent: true });
+      }, 180);
+    }
+    ['pier-height-ft', 'pier-spacing-ft', 'pier-diameter-in', 'pier-count'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('change', livePierFromModal);
+      el.addEventListener('input', livePierFromModal);
+    });
+
+    // 3D pier panel
+    const pierApply = document.getElementById('v3d-pier-apply');
+    const pierClose = document.getElementById('v3d-pier-close');
+    if (pierApply) {
+      pierApply.addEventListener('click', () => {
+        applyPierDialValues(readPierInputsFrom3dPanel());
+      });
+    }
+    if (pierClose) {
+      pierClose.addEventListener('click', () => {
+        pierPanelDismissed = true;
+        const panel = document.getElementById('view3d-pier-panel');
+        if (panel) panel.hidden = true;
+      });
+    }
+    let pier3dTimer = null;
+    function livePierFrom3d() {
+      clearTimeout(pier3dTimer);
+      pier3dTimer = setTimeout(() => {
+        applyPierDialValues(readPierInputsFrom3dPanel(), { silent: true });
+      }, 180);
+    }
+    ['v3d-pier-height', 'v3d-pier-spacing', 'v3d-pier-diameter', 'v3d-pier-count'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('change', livePierFrom3d);
+      el.addEventListener('input', livePierFrom3d);
+    });
+
     refreshFoundationChrome();
   }
 

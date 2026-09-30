@@ -49,7 +49,9 @@ const SILL_PROJ = 1.25 / 12; // projecting exterior sill
 const ROOF_THICK = 5 / 12; // ~4–6 in sheathing+shingle visual
 const FOUND_REVEAL_SLAB = 0.75; // 9 in reveal
 const PIER_H_DEFAULT = 2.5; // ~2–3 ft elevated reveal
-const PIER_R = 0.5; // 12 in sonotube radius (dia 12 in → r=0.5 ft)
+const PIER_SPACING_DEFAULT = 6; // ft o.c. along wall edges
+const PIER_DIAMETER_IN_DEFAULT = 12; // sonotube diameter (in)
+const PIER_R = 0.5; // 12 in sonotube radius (dia 12 in → r=0.5 ft) — overridden by store
 const BASEBOARD_H = 4 / 12; // ~4 in interior trim
 const BASEBOARD_T = 0.09; // ~1.1 in thick — readable trim
 const PAINT_LINER_T = 0.035; // thin interior paint face
@@ -1367,27 +1369,36 @@ function createView3D(container) {
 
   /**
    * Sonotube / pier foundation — ONLY under wall edges (corners + along exterior /
-   * bearing wall lines at ~6 ft o.c.). Never mid-span under open floor.
+   * bearing wall lines). Never mid-span under open floor.
    * opts.walls: plan walls in plan-ft (with opts.ox/oz origin) → wall-aware placement.
    * Without walls: perimeter of the ax,az / addL×addW rectangle only.
+   * opts.spacingFt / diameterIn / pierCount from store dials (EXAMPLE defaults).
    */
   function addPierFoundation(ax, az, addL, addW, pierH, foundMat, beamMat, group, opts) {
     const wrap = new THREE.Group();
-    wrap.userData = { type: 'pierFoundation', pierH };
+    const opts0 = opts || {};
+    const h = pierH > 0 ? pierH : PIER_H_DEFAULT;
+    let spacing = opts0.spacingFt > 0 ? opts0.spacingFt : PIER_SPACING_DEFAULT;
+    if (spacing < 2) spacing = 2;
+    if (spacing > 20) spacing = 20;
+    const diaIn = opts0.diameterIn > 0 ? opts0.diameterIn : PIER_DIAMETER_IN_DEFAULT;
+    const pierR = Math.max(0.2, (diaIn / 12) / 2); // inches → ft radius
+    const wantCount = opts0.pierCount > 0 ? Math.round(opts0.pierCount) : 0;
+    wrap.userData = {
+      type: 'pierFoundation', pierH: h,
+      spacingFt: spacing, diameterIn: diaIn, wantCount,
+    };
     group.add(wrap);
     group = wrap;
-    const h = pierH > 0 ? pierH : PIER_H_DEFAULT;
-    const spacing = 6; // ft o.c. along edges
-    const opts0 = opts || {};
     const pierMap = new Map();
     function addPierPt(px, pz) {
       const k = keyPt(px, pz);
       if (!pierMap.has(k)) pierMap.set(k, [px, pz]);
     }
-    function placeAlongSegment(x1, z1, x2, z2) {
+    function placeAlongSegment(x1, z1, x2, z2, sp) {
       const len = Math.hypot(x2 - x1, z2 - z1);
       if (len < 0.05) return;
-      const n = Math.max(2, Math.round(len / spacing) + 1);
+      const n = Math.max(2, Math.round(len / sp) + 1);
       for (let i = 0; i < n; i++) {
         const t = i / (n - 1);
         addPierPt(x1 + (x2 - x1) * t, z1 + (z2 - z1) * t);
@@ -1397,9 +1408,10 @@ function createView3D(container) {
     const walls = opts0.walls || null;
     const wallOx = opts0.ox != null ? opts0.ox : 0;
     const wallOz = opts0.oz != null ? opts0.oz : 0;
+    const segments = [];
     if (walls && walls.length) {
       walls.forEach((w) => {
-        placeAlongSegment(w.x1 - wallOx, w.y1 - wallOz, w.x2 - wallOx, w.y2 - wallOz);
+        segments.push([w.x1 - wallOx, w.y1 - wallOz, w.x2 - wallOx, w.y2 - wallOz]);
       });
     } else {
       // Parametric / no sketch walls: perimeter of rectangle only (no interior grid).
@@ -1408,16 +1420,73 @@ function createView3D(container) {
       const x1 = ax + addL / 2 - inset;
       const z0 = az - addW / 2 + inset;
       const z1 = az + addW / 2 - inset;
-      placeAlongSegment(x0, z0, x1, z0);
-      placeAlongSegment(x0, z1, x1, z1);
-      placeAlongSegment(x0, z0, x0, z1);
-      placeAlongSegment(x1, z0, x1, z1);
+      segments.push([x0, z0, x1, z0], [x0, z1, x1, z1], [x0, z0, x0, z1], [x1, z0, x1, z1]);
+    }
+
+    if (wantCount > 0) {
+      // Explicit count: corners first, then fill along edges (still edge-only).
+      let totalLen = 0;
+      const lens = segments.map(([x1, z1, x2, z2]) => {
+        const len = Math.hypot(x2 - x1, z2 - z1);
+        totalLen += len;
+        return len;
+      });
+      const n = Math.max(4, Math.min(80, wantCount));
+      segments.forEach(([x1, z1, x2, z2]) => {
+        addPierPt(x1, z1);
+        addPierPt(x2, z2);
+      });
+      if (pierMap.size > n) {
+        const all = Array.from(pierMap.values());
+        pierMap.clear();
+        for (let i = 0; i < n; i++) {
+          const idx = Math.round(i * (all.length - 1) / Math.max(1, n - 1));
+          addPierPt(all[idx][0], all[idx][1]);
+        }
+      } else if (pierMap.size < n && totalLen > 0.1) {
+        const need = n - pierMap.size;
+        // Place `need` intermediates along longest edges, spaced away from ends
+        const ranked = segments
+          .map((seg, i) => ({ seg, len: lens[i], i }))
+          .filter((r) => r.len > 1.0)
+          .sort((a, b) => b.len - a.len);
+        let placed = 0;
+        let pass = 0;
+        while (placed < need && pass < 8 && ranked.length) {
+          for (let r = 0; r < ranked.length && placed < need; r++) {
+            const { seg, len } = ranked[r];
+            const slots = pass + 2; // divide edge into more parts each pass
+            for (let k = 1; k < slots && placed < need; k++) {
+              const t = k / slots;
+              if (t < 0.08 || t > 0.92) continue;
+              const before = pierMap.size;
+              addPierPt(seg[0] + (seg[2] - seg[0]) * t, seg[1] + (seg[3] - seg[1]) * t);
+              if (pierMap.size > before) placed += 1;
+            }
+          }
+          pass += 1;
+        }
+        // Final trim if we slightly overshot
+        if (pierMap.size > n) {
+          const all = Array.from(pierMap.values());
+          pierMap.clear();
+          for (let i = 0; i < n; i++) {
+            const idx = Math.round(i * (all.length - 1) / Math.max(1, n - 1));
+            addPierPt(all[idx][0], all[idx][1]);
+          }
+        }
+      }
+    } else {
+      // Spacing-driven density along each edge (corners + o.c.)
+      segments.forEach(([x1, z1, x2, z2]) => placeAlongSegment(x1, z1, x2, z2, spacing));
     }
     const pierPositions = Array.from(pierMap.values());
+    wrap.userData.count = pierPositions.length;
+    wrap.userData.pierR = pierR;
 
     pierPositions.forEach(([px, pz]) => {
       const cyl = new THREE.Mesh(
-        new THREE.CylinderGeometry(PIER_R, PIER_R * 1.05, h, 16),
+        new THREE.CylinderGeometry(pierR, pierR * 1.05, h, 16),
         foundMat
       );
       cyl.position.set(px, h / 2, pz);
@@ -1426,7 +1495,7 @@ function createView3D(container) {
       cyl.userData = { type: 'pier', label: 'Pier / sonotube' };
       group.add(cyl);
       const pad = new THREE.Mesh(
-        new THREE.CylinderGeometry(PIER_R * 1.6, PIER_R * 1.7, 0.25, 12),
+        new THREE.CylinderGeometry(pierR * 1.6, pierR * 1.7, 0.25, 12),
         foundMat
       );
       pad.position.set(px, 0.12, pz);
@@ -1469,7 +1538,7 @@ function createView3D(container) {
         });
       }
     }
-    return { pierH: h, count: pierPositions.length };
+    return { pierH: h, count: pierPositions.length, spacingFt: spacing, diameterIn: diaIn, pierR };
   }
 
   function boxAt(w, h, d, x, y, z, material, group, ud) {
@@ -2885,6 +2954,9 @@ function createView3D(container) {
             walls: plan.walls || [],
             ox: ox,
             oz: oz,
+            spacingFt: store.pier_spacing_ft,
+            diameterIn: store.pier_diameter_in,
+            pierCount: store.pier_count,
           });
           // Elevate building content onto pier tops (leave ground/grid/piers)
           [...rootGroup.children].forEach((ch) => {
@@ -2946,7 +3018,11 @@ function createView3D(container) {
       if (store.show_foundation !== false) {
         if (ft === 'piers') {
           const pierH = store.pier_height_ft > 0 ? store.pier_height_ft : PIER_H_DEFAULT;
-          addPierFoundation(ax, az, addL, addW, pierH, foundMat, beamMat, rootGroup);
+          addPierFoundation(ax, az, addL, addW, pierH, foundMat, beamMat, rootGroup, {
+            spacingFt: store.pier_spacing_ft,
+            diameterIn: store.pier_diameter_in,
+            pierCount: store.pier_count,
+          });
         } else if (ft === 'slab') {
           // Framing on: thin pad under trusses (readable from above).
           // Framing off: 4–12 in reveal below cladding line + finish floor.
@@ -4319,7 +4395,12 @@ function createView3D(container) {
       });
     });
     let pierCount = 0;
+    let pierTubeCount = 0;
     let pierH = 0;
+    let pierSpacingFt = 0;
+    let pierDiameterIn = 0;
+    let pierPositions = [];
+    let gradeBeamCount = 0;
     let maxContentY = 0;
     let fixtureCount = 0;
     let floorFramingCount = 0;
@@ -4330,7 +4411,17 @@ function createView3D(container) {
         if (o.userData && o.userData.type === 'pierFoundation') {
           pierCount += 1;
           if (o.userData.pierH) pierH = o.userData.pierH;
+          if (o.userData.spacingFt) pierSpacingFt = o.userData.spacingFt;
+          if (o.userData.diameterIn) pierDiameterIn = o.userData.diameterIn;
+          if (o.userData.count) pierTubeCount = o.userData.count;
         }
+        if (o.userData && o.userData.type === 'pier' && o.userData.label === 'Pier / sonotube') {
+          pierPositions.push([
+            Math.round(o.position.x * 100) / 100,
+            Math.round(o.position.z * 100) / 100,
+          ]);
+        }
+        if (o.userData && o.userData.type === 'gradeBeam') gradeBeamCount += 1;
         if (o.userData && o.userData.type === 'floorFraming') {
           floorFramingCount += 1;
         }
@@ -4365,7 +4456,16 @@ function createView3D(container) {
       foundation_type: lastStore ? lastStore.foundation_type : null,
       show_foundation: lastStore ? lastStore.show_foundation : null,
       pierCount,
+      pierTubeCount: pierPositions.length || pierTubeCount,
+      pierPositions,
       pierH,
+      pierSpacingFt,
+      pierDiameterIn: pierDiameterIn || (lastStore && lastStore.pier_diameter_in) || 0,
+      pier_spacing_ft: lastStore ? lastStore.pier_spacing_ft : null,
+      pier_height_ft: lastStore ? lastStore.pier_height_ft : null,
+      pier_diameter_in: lastStore ? lastStore.pier_diameter_in : null,
+      pier_count: lastStore ? lastStore.pier_count : null,
+      gradeBeamCount,
       maxContentY,
     };
   }

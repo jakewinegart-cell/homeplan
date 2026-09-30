@@ -1593,6 +1593,30 @@
       case 'foundation_type':
         a.E21 = value;
         break;
+      case 'pier_height_ft': {
+        const n = Number(value);
+        if (Number.isFinite(n) && n > 0) a.pier_height_ft = n;
+        break;
+      }
+      case 'pier_spacing_ft': {
+        const n = Number(value);
+        if (Number.isFinite(n) && n > 0) a.pier_spacing_ft = n;
+        break;
+      }
+      case 'pier_diameter_in': {
+        const n = Number(value);
+        if (Number.isFinite(n) && n > 0) a.pier_diameter_in = n;
+        break;
+      }
+      case 'pier_count': {
+        if (value == null || value === '' || value === 0 || value === '0') {
+          delete a.pier_count;
+        } else {
+          const n = Number(value);
+          if (Number.isFinite(n) && n > 0) a.pier_count = Math.round(n);
+        }
+        break;
+      }
       case 'floor_align':
         a.E23 = value;
         break;
