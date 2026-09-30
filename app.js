@@ -1,6 +1,7 @@
 /**
  * HomePlan app shell — Guidance A–K, Materials, 3D, Save/Share
  * REMODEL_GUIDE_HOOK: /workspace/remodel-app-content-v1.md via guide-data.js
+ * BARE_BONES: /workspace/remodel-app-small-budget-v1.md (budget_mode standard|bare_bones)
  */
 (function () {
   'use strict';
@@ -46,6 +47,10 @@
   let suppressing3dRebuild = false;
   let planDirtyFor3d = true;
   let tipDismissed = false;
+  /** budget_mode: 'standard' | 'bare_bones' — always toggleable; soft-offered on K42=u50 / H30=budget */
+  let budgetMode = 'standard';
+  let bareBonesOfferDismissed = false;
+  const bareBonesMethodChecks = { A: false, B: false, C: false, D: false, E: false };
 
   let pendingWallHeightRoomId = null;
 
@@ -904,7 +909,8 @@
       return;
     }
     const plan = floor ? floor.exportData() : {};
-    lastWalkthrough = window.HomePlanWalkthrough.generate(qaAnswers, plan);
+    qaAnswers.__budget_mode = budgetMode;
+    lastWalkthrough = window.HomePlanWalkthrough.generate(qaAnswers, plan, { budgetMode });
     walkthroughDirty = false;
     const doc = lastWalkthrough;
     const tok = doc.tokens;
@@ -920,6 +926,7 @@
       '<span class="wt-badge danger">Not construction documents</span> ' +
       '<span class="wt-badge danger">Not a permit package</span> ' +
       '<span class="wt-badge example">EXAMPLE timing &amp; pricing where shown</span>' +
+      (doc.bare_bones ? ' <span class="wt-badge tip">Bare-bones · shell first, finishes later</span>' : '') +
       '<h2>Build Walkthrough (Illustrative)</h2>' +
       '<p><strong>' + escapeHtml(tok.project_label) + '</strong> — ~' + tok.area_sqft + ' sq ft mindset</p>' +
       '<p class="muted small">Generated ' + new Date(doc.generatedAt).toLocaleString() + '</p>' +
@@ -952,11 +959,11 @@
     doc.phases.forEach(function (phase) {
       html += '<h3>Phase ' + escapeHtml(phase.id) + ' — ' + escapeHtml(phase.title) + '</h3>';
       phase.steps.forEach(function (s) {
-        html += '<div class="wt-step"><h4>' + escapeHtml(s.title) + '</h4><p>' + escapeHtml(s.body) + '</p>';
+        html += '<div class="wt-step' + (s.deferred || s.id === 'WT_BB_PAUSE' ? ' deferred-step' : '') + '"><h4>' + escapeHtml(s.title) + '</h4><p>' + escapeHtml(s.body) + '</p>';
         if (s.watch_outs && s.watch_outs.length) {
           html += '<ul class="wt-list watch">';
           s.watch_outs.forEach(function (w) {
-            var badge = w.tone === 'must_hire_pro' ? 'danger' : (w.tone === 'example' ? 'example' : 'aware');
+            var badge = w.tone === 'must_hire_pro' ? 'danger' : (w.tone === 'example' ? 'example' : (w.tone === 'tip' ? 'tip' : 'aware'));
             html += '<li><span class="wt-badge ' + badge + '">' + escapeHtml(w.tone) + '</span> ' + escapeHtml(w.text) + '</li>';
           });
           html += '</ul>';
@@ -978,8 +985,9 @@
     html += '<article class="wt-page page-break" id="wt-p5"><h2>Materials order</h2>' +
       '<p>Buy in this order so materials show up when that phase starts. Amounts are <span class="wt-badge example">EXAMPLE ESTIMATES</span> — not a supplier quote.</p>';
     doc.materialsOrder.forEach(function (g) {
-      html += '<div class="wt-buy-group"><h4>' + escapeHtml(g.label) + '</h4><p class="muted small">' + escapeHtml(g.note || '') + '</p>';
-      if (g.mustHire) html += '<span class="wt-badge danger">must hire pro</span>';
+      html += '<div class="wt-buy-group' + (g.deferred ? ' deferred-step' : '') + '"><h4>' + escapeHtml(g.label) + '</h4><p class="muted small">' + escapeHtml(g.note || '') + '</p>';
+      if (g.mustHire) html += '<span class="wt-badge danger">must hire pro</span> ';
+      if (g.deferred) html += '<span class="wt-badge tip">deferred · Phase 7</span>';
       html += '<ul>';
       g.categories.forEach(function (c) { html += '<li>' + escapeHtml(c.name) + '</li>'; });
       html += '</ul></div>';
@@ -1002,7 +1010,8 @@
     if (doc.materials && doc.materials.lines) {
       html += '<ul class="wt-check">';
       doc.materials.lines.forEach(function (line) {
-        html += '<li>' + escapeHtml(line.category) + ' — ' + escapeHtml(line.item) +
+        html += '<li' + (line.deferred ? ' class="deferred-step"' : '') + '>' + escapeHtml(line.category) + ' — ' + escapeHtml(line.item) +
+          (line.deferred ? ' <span class="deferred-tag">Phase 7 · deferred</span>' : '') +
           ' <span class="wt-badge example">EXAMPLE $' + Math.round(line.extension).toLocaleString() + '</span></li>';
       });
       html += '</ul>';
@@ -1070,8 +1079,14 @@
     if (qid === 'A1' && (value === 'addition' || value === 'both' || value === 'unsure')) {
       maybePromptExistingHouse();
     }
+    // Soft-offer bare-bones when Stage K Under $50k or H30 Budget-friendly
+    if ((qid === 'K42' && value === 'u50') || (qid === 'H30' && value === 'budget')) {
+      bareBonesOfferDismissed = false;
+    }
+    qaAnswers.__budget_mode = budgetMode;
     renderQA();
     renderRecs();
+    updateBareBonesOffer();
     renderMaterials();
     refreshFoundationChrome();
     schedule3DRebuild();
@@ -1198,6 +1213,7 @@
     } else {
       callout.classList.add('hidden');
     }
+    updateBareBonesOffer();
   }
 
   function renderFootprint(q, opts, extra) {
@@ -1298,15 +1314,103 @@
     return s ? s.name : id;
   }
 
+  function setBudgetMode(mode, opts) {
+    const next = mode === 'bare_bones' ? 'bare_bones' : 'standard';
+    const silent = opts && opts.silent;
+    budgetMode = next;
+    qaAnswers.__budget_mode = next;
+    syncBudgetModeUI();
+    renderBareBonesMethodPanel();
+    renderMaterials();
+    walkthroughDirty = true;
+    if (!silent) {
+      showToast(next === 'bare_bones'
+        ? 'Bare-bones plan ON — shell first, finishes later'
+        : 'Standard budget plan');
+    }
+  }
+
+  function syncBudgetModeUI() {
+    document.querySelectorAll('[data-budget-mode]').forEach((btn) => {
+      btn.classList.toggle('active', btn.getAttribute('data-budget-mode') === budgetMode);
+    });
+    const chips = document.getElementById('bare-bones-chips');
+    if (chips) chips.hidden = budgetMode !== 'bare_bones';
+    const panel = document.getElementById('bare-bones-method-panel');
+    if (panel) panel.hidden = budgetMode !== 'bare_bones';
+    updateBareBonesOffer();
+  }
+
+  function updateBareBonesOffer() {
+    const offer = document.getElementById('bare-bones-offer');
+    if (!offer || !G()) return;
+    const should = G().shouldOfferBareBones(qaAnswers) && budgetMode !== 'bare_bones' && !bareBonesOfferDismissed;
+    offer.hidden = !should;
+  }
+
+  function renderBareBonesMethodPanel() {
+    const panel = document.getElementById('bare-bones-method-panel');
+    if (!panel || !G() || !G().buildBareBonesPlan) return;
+    const plan = G().buildBareBonesPlan(qaAnswers, { budgetMode });
+    const stepsHost = document.getElementById('bb-method-steps');
+    const mustHost = document.getElementById('bb-shell-must');
+    const cutHost = document.getElementById('bb-cut-list');
+    const disc = document.getElementById('bb-method-disclaimer');
+    if (!stepsHost) return;
+
+    stepsHost.innerHTML = '';
+    (plan.method || []).forEach((step) => {
+      const li = document.createElement('li');
+      const checked = !!bareBonesMethodChecks[step.id];
+      li.className = 'bb-method-step' + (checked ? ' done' : '');
+      li.innerHTML =
+        '<input type="checkbox" id="bb-check-' + step.id + '" ' + (checked ? 'checked' : '') + ' aria-label="Step ' + step.id + '" />' +
+        '<div><span class="bb-step-letter">' + escapeHtml(step.id) + '</span>' +
+        '<span class="bb-step-title">' + escapeHtml(step.title) + '</span>' +
+        '<span class="bb-step-summary">' + escapeHtml(step.summary) + '</span>' +
+        '<span class="bb-step-details">' + escapeHtml(step.details) + '</span></div>';
+      const cb = li.querySelector('input');
+      cb.addEventListener('change', () => {
+        bareBonesMethodChecks[step.id] = cb.checked;
+        li.classList.toggle('done', cb.checked);
+      });
+      stepsHost.appendChild(li);
+    });
+
+    if (mustHost) {
+      mustHost.innerHTML = (plan.shell_must || []).map((t) => '<li>' + escapeHtml(t) + '</li>').join('');
+    }
+    if (cutHost) {
+      const cuts = plan.cut_list || [];
+      if (!cuts.length) {
+        cutHost.innerHTML = '<li class="muted">No plan-aware cuts yet — answer Guidance (vaults, openings, cladding, HVAC) to populate.</li>';
+      } else {
+        cutHost.innerHTML = cuts.map((c) =>
+          '<li><span class="cut-if">' + escapeHtml(c.if_present) + ':</span> <span class="cut-sug">' + escapeHtml(c.suggestion) + '</span></li>'
+        ).join('');
+      }
+    }
+    if (disc) disc.textContent = plan.disclaimer || '';
+
+    const defChip = document.getElementById('bb-deferred-chip');
+    if (defChip) {
+      const names = (plan.deferred_categories || []).join(', ') || 'flooring, paint, trim, fixtures';
+      defChip.textContent = 'Deferred: ' + names;
+    }
+  }
+
   function renderMaterials() {
     if (!G()) return;
-    const data = G().buildMaterials(qaAnswers);
+    qaAnswers.__budget_mode = budgetMode;
+    const data = G().buildMaterials(qaAnswers, { budgetMode });
     const tbody = document.querySelector('#materials-table tbody');
     tbody.innerHTML = '';
     data.lines.forEach((row) => {
       const tr = document.createElement('tr');
+      if (row.deferred) tr.className = 'deferred-line';
+      const deferTag = row.deferred ? ' <span class="deferred-tag">Phase 7 · deferred</span>' : '';
       tr.innerHTML = `
-        <td><span class="cat-pill">${escapeHtml(row.category)}</span></td>
+        <td><span class="cat-pill">${escapeHtml(row.category)}</span>${deferTag}</td>
         <td>${escapeHtml(row.item)}</td>
         <td>${escapeHtml(supplierName(row.supplier))}</td>
         <td>${row.qty}</td>
@@ -1319,34 +1423,61 @@
     const r = data.rollup;
     document.getElementById('materials-total').textContent = money(r.total);
     document.getElementById('materials-with-waste').textContent = money(r.materialsWithWaste);
-    document.getElementById('materials-count').textContent = String(data.lines.length);
+    document.getElementById('materials-count').textContent = String(
+      data.bare_bones ? (data.activeLines || data.lines.filter((l) => !l.deferred)).length : data.lines.length
+    );
 
     const dl = document.getElementById('rollup-dl');
+    let deferredRow = '';
+    if (data.bare_bones && r.deferredSubtotal) {
+      deferredRow = `<div><dt>Deferred finishes (Phase 7, not in shell total)</dt><dd>${money(r.deferredSubtotal)} EXAMPLE</dd></div>`;
+    }
     dl.innerHTML = `
-      <div><dt>Materials subtotal</dt><dd>${money(r.materialsSubtotal)} EXAMPLE</dd></div>
+      <div><dt>Materials subtotal${data.bare_bones ? ' (shell-active)' : ''}</dt><dd>${money(r.materialsSubtotal)} EXAMPLE</dd></div>
       <div><dt>Waste (${r.wastePct}%)</dt><dd>${money(r.materialsWithWaste - r.materialsSubtotal)} EXAMPLE</dd></div>
       <div><dt>Materials with waste</dt><dd>${money(r.materialsWithWaste)} EXAMPLE</dd></div>
       <div><dt>Contingency (${r.contingencyPct}%)</dt><dd>${money(r.contingency)} EXAMPLE</dd></div>
+      ${deferredRow}
       <div><dt>Labor placeholder ${r.includeLabor ? '' : '(hidden)'}</dt><dd>${r.includeLabor ? money(r.labor) + ' EXAMPLE' : '—'}</dd></div>
       <div><dt>Tax placeholder (${r.taxPct}% on materials w/ waste)</dt><dd>${money(r.tax)} EXAMPLE</dd></div>
-      <div class="rollup-total"><dt>EXAMPLE project total (NOT A QUOTE)</dt><dd>${money(r.total)}</dd></div>
+      <div class="rollup-total"><dt>EXAMPLE ${data.bare_bones ? 'shell-first ' : ''}project total (NOT A QUOTE)</dt><dd>${money(r.total)}</dd></div>
     `;
     document.getElementById('rollup-disclaimer').textContent = r.disclaimer;
+    syncBudgetModeUI();
+    if (budgetMode === 'bare_bones') renderBareBonesMethodPanel();
+  }
+
+  function initBudgetModeControls() {
+    document.querySelectorAll('[data-budget-mode]').forEach((btn) => {
+      btn.addEventListener('click', () => setBudgetMode(btn.getAttribute('data-budget-mode')));
+    });
+    const accept = document.getElementById('btn-bare-bones-accept');
+    const dismiss = document.getElementById('btn-bare-bones-dismiss');
+    if (accept) accept.addEventListener('click', () => setBudgetMode('bare_bones'));
+    if (dismiss) dismiss.addEventListener('click', () => {
+      bareBonesOfferDismissed = true;
+      updateBareBonesOffer();
+    });
+    syncBudgetModeUI();
   }
 
   function initMaterials() {
+    initBudgetModeControls();
     renderMaterials();
   }
 
   // ---- Project save / share ----
   function buildProjectPayload() {
+    qaAnswers.__budget_mode = budgetMode;
     return {
       version: 2,
       name: els.projectName.value.trim() || 'My Remodel',
       savedAt: new Date().toISOString(),
       plan: floor ? floor.exportData() : null,
       guidance: { answers: { ...qaAnswers }, stepIndex: qaIndex },
-      // REMODEL_GUIDE_HOOK: content v1.1
+      budget_mode: budgetMode,
+      bareBonesMethodChecks: { ...bareBonesMethodChecks },
+      // REMODEL_GUIDE_HOOK: content v1.2 + bare-bones small-budget
       guideSource: G() ? G().sourcePath : null,
     };
   }
@@ -1375,8 +1506,18 @@
       if (data.guidance) {
         Object.assign(qaAnswers, data.guidance.answers || {});
         qaIndex = data.guidance.stepIndex || 0;
+      }
+      if (data.budget_mode === 'bare_bones' || (data.guidance && data.guidance.answers && data.guidance.answers.__budget_mode === 'bare_bones')) {
+        budgetMode = 'bare_bones';
+      } else if (data.budget_mode === 'standard') {
+        budgetMode = 'standard';
+      }
+      if (data.bareBonesMethodChecks) Object.assign(bareBonesMethodChecks, data.bareBonesMethodChecks);
+      qaAnswers.__budget_mode = budgetMode;
+      if (data.guidance) {
         renderQA();
         renderRecs();
+        updateBareBonesOffer();
         renderMaterials();
       }
       if (data.savedAt) {

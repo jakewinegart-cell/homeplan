@@ -1304,3 +1304,114 @@ button { cursor: pointer; }
   .view3d-add-btn { min-width: 4.6rem; flex: 1 1 auto; }
   .view3d-size-chip { font-size: 0.68rem; padding: 0.3rem 0.55rem; }
 }
+
+
+/* ---- Bare-bones / small-budget planning ---- */
+.budget-mode-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem 0.75rem;
+  margin-top: 0.85rem; padding: 0.65rem 0.85rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.budget-mode-label {
+  font-size: 0.78rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--ink-muted);
+}
+.budget-mode-toggle { display: inline-flex; gap: 0.35rem; flex-wrap: wrap; }
+.budget-chip {
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.budget-chip:hover { border-color: var(--accent); }
+.budget-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.bare-bones-offer {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.65rem;
+  margin-top: 0.85rem; padding: 0.75rem 0.9rem;
+  background: #eef6f4; border: 1px solid #b7d4ce;
+  border-radius: var(--radius-sm);
+}
+.bare-bones-offer-copy { display: flex; flex-direction: column; gap: 0.15rem; flex: 1; min-width: 180px; }
+.bare-bones-chips { display: inline-flex; flex-wrap: wrap; gap: 0.35rem; }
+.bb-chip {
+  display: inline-block; padding: 0.2rem 0.55rem; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 0.75rem; font-weight: 650;
+}
+.bare-bones-method-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.15rem 1.15rem;
+  margin-bottom: 1.15rem;
+  box-shadow: var(--shadow);
+}
+.bb-method-head h2 { margin: 0 0 0.25rem; font-size: 1.05rem; }
+.bb-method-head p { margin: 0 0 0.75rem; }
+.bb-method-steps {
+  list-style: none; margin: 0 0 1rem; padding: 0;
+  display: flex; flex-direction: column; gap: 0.45rem;
+}
+.bb-method-step {
+  display: grid; grid-template-columns: auto 1fr; gap: 0.55rem 0.7rem;
+  padding: 0.55rem 0.7rem; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: var(--surface-2);
+  align-items: start;
+}
+.bb-method-step.done { border-color: #b7d4ce; background: #f3faf8; }
+.bb-method-step input[type="checkbox"] { margin-top: 0.2rem; width: 1rem; height: 1rem; }
+.bb-step-letter {
+  display: inline-block; width: 1.35rem; height: 1.35rem; line-height: 1.35rem;
+  text-align: center; border-radius: 999px; background: var(--accent);
+  color: #fff; font-size: 0.75rem; font-weight: 700; margin-right: 0.35rem;
+}
+.bb-step-title { font-weight: 650; font-size: 0.92rem; }
+.bb-step-summary { display: block; color: var(--ink-muted); font-size: 0.84rem; margin-top: 0.15rem; }
+.bb-step-details { display: block; color: var(--ink-muted); font-size: 0.8rem; margin-top: 0.3rem; line-height: 1.4; }
+.bb-method-cols {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; margin-bottom: 0.5rem;
+}
+@media (max-width: 720px) {
+  .bb-method-cols { grid-template-columns: 1fr; }
+}
+.bb-method-cols h3 { margin: 0 0 0.4rem; font-size: 0.88rem; }
+.bb-list { margin: 0; padding-left: 1.1rem; font-size: 0.86rem; line-height: 1.45; color: var(--ink); }
+.bb-list li { margin-bottom: 0.25rem; }
+.bb-list .cut-if { font-weight: 600; }
+.bb-list .cut-sug { color: var(--ink-muted); }
+
+/* Deferred finish lines (gray until after shell) */
+.materials-table tbody tr.deferred-line {
+  background: #f3f2f0;
+  color: #8a8680;
+}
+.materials-table tbody tr.deferred-line:hover { background: #eceae6; }
+.materials-table tbody tr.deferred-line .cat-pill {
+  background: #e4e2de; color: #6e6a64;
+}
+.deferred-tag {
+  display: inline-block; margin-left: 0.35rem;
+  padding: 0.1rem 0.4rem; border-radius: 999px;
+  background: #e4e2de; color: #5c5852;
+  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.wt-step.deferred-step {
+  opacity: 0.72;
+  border-left: 3px solid #b0aaa2;
+  padding-left: 0.6rem;
+}
+.wt-callout.tip, .wt-badge.tip {
+  /* reuse accent-ish for bare-bones tips injected as tip tone */
+}
+.wt-badge.tip { background: var(--accent-soft); color: var(--accent); }
+

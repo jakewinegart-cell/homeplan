@@ -430,6 +430,12 @@
       text: 'Vaulted ceilings look great but change roof framing, insulation, and often HVAC. Expect higher costs and framing complexity.' },
     { id: 'r15', type: 'tip', when: (a) => ['unsure','will_check'].includes(S(a,'A5')),
       text: 'Most additions and many remodeled bathrooms/kitchens need permits. Check your city/county building department before buying materials or opening walls.' },
+    { id: 'r16', type: 'tip', when: (a) => S(a,'K42') === 'u50',
+      text: 'Under $50k (EXAMPLE): consider a Bare-bones plan — shell first, finishes later. Toggle Small-budget / bare-bones anytime.' },
+    { id: 'r17', type: 'tip', when: (a) => S(a,'H30') === 'budget' && S(a,'K42') !== 'u50',
+      text: 'Budget-friendly finish pairs well with a Bare-bones plan: fund the weather-tight shell before flooring, paint, and fixtures.' },
+    { id: 'r18', type: 'tip', when: (a) => (a.__budget_mode === 'bare_bones'),
+      text: 'Bare-bones mode ON: EXAMPLE unit costs lean lower tier; flooring/paint/trim/fixtures are deferred (Phase 7). Contingency stays 15%. Not a bid · not a permit package.' },
   ];
 
   const EXTRA = [
@@ -484,6 +490,60 @@
     { category: 'Electrical allowances', item: 'Devices & lighting allowance', uom: 'allowance', qty: 1, unit: 1500, supplier: 'SUP-HD' },
     { category: 'HVAC allowances', item: 'HVAC placeholder', uom: 'allowance', qty: 1, unit: 2500, supplier: 'SUP-HVAC' },
     { category: 'Misc allowances', item: 'Dumpster, protection, sealants', uom: 'allowance', qty: 1, unit: 600, supplier: 'SUP-HD' },
+  ];
+
+  /** Finish categories deferred in bare-bones mode (Phase 7 — later). Category tree 1–17 unchanged. */
+  const DEFERRED_FINISH_CATEGORIES = [
+    'Flooring', 'Interior trim & doors', 'Paint & finishes', 'Plumbing fixtures & allowances',
+  ];
+
+  /** Bare-bones method steps A–E — planning only; still EXAMPLE / not a bid. */
+  const BARE_BONES_METHOD = [
+    {
+      id: 'A', title: 'Freeze the footprint',
+      summary: 'Keep drawn size; resist “while we’re at it” bumps.',
+      details: 'Prefer one story, slab or simple piers under wall edges, and a shed/lean-to roof if it saves tie-in cost. Every extra foot of wall and roof multiplies framing, cladding, and openings.',
+    },
+    {
+      id: 'B', title: 'Shell-first scope (must fund)',
+      summary: 'Fund weather-tight shell through paint-ready drywall before finishes.',
+      details: 'Ordered must-haves: permits awareness → foundation → framing + sheathing → WRB/flashing/min windows-doors → roofing dry-in + basic cladding → insulation + drywall. Defer upgrades, vaulted ceilings, masonry veneer, spa baths, and second systems.',
+    },
+    {
+      id: 'C', title: 'Phase the spend',
+      summary: 'Buy/build in fixed order so paint doesn’t outrun the roof.',
+      details: 'Phases 0–6 get you to a closed, insulated, drywalled shell (bare-bones pause). Phase 7 (flooring/paint/trim/fixtures) only after the shell is dry and paid.',
+    },
+    {
+      id: 'D', title: 'Plan-aware cut list',
+      summary: 'Defer or simplify vaults, extra openings, masonry, and dual HVAC paths.',
+      details: 'Suggestions update from Guidance answers: flat 8 ft vs vaulted, egress + 1–2 daylight openings, fiber cement/vinyl EXAMPLE tier, wet rooms later with rough-in stubs if affordable, one HVAC path, prefer separate shed roof.',
+    },
+    {
+      id: 'E', title: 'Contingency (don’t skip)',
+      summary: 'Keep 15% of materials-with-waste even on a small budget.',
+      details: 'On tight money, contingency protects the roof and flashing — not the backsplash. Bare-bones mode still defaults to 15%.',
+    },
+  ];
+
+  const BARE_BONES_SHELL_MUST = [
+    'Permits awareness / plans as required locally (awareness only — app doesn’t file)',
+    'Foundation (slab or piers-on-wall-edges)',
+    'Floor/walls/roof framing + sheathing',
+    'WRB, flashing, windows/doors (minimum count for light/egress)',
+    'Roofing dry-in + basic cladding (good-enough durable EXAMPLE tier)',
+    'Insulation + drywall (paint-ready) — optional bare-bones pause before finishes',
+  ];
+
+  const BARE_BONES_PHASE_SPEND = [
+    { phase: 0, spend: 'Locates, dumpster, protection, permit fees (outside app)', gate: 'Before dig' },
+    { phase: 1, spend: 'Foundation materials', gate: 'Before framing lumber' },
+    { phase: 2, spend: 'Framing, sheathing, hardware', gate: 'Before windows arrive' },
+    { phase: 3, spend: 'Roofing + WRB/flashing', gate: 'Weather-tight' },
+    { phase: 4, spend: 'Minimum windows/doors', gate: 'Before cladding finish' },
+    { phase: 5, spend: 'Cladding (good-enough)', gate: 'Shell closed' },
+    { phase: 6, spend: 'Insulation + drywall', gate: 'Bare-bones pause — live with primer if needed' },
+    { phase: 7, spend: 'Flooring / paint / trim / fixtures', gate: 'Only after shell is dry and paid' },
   ];
 
   function S(a, id) { const v = a[id]; return Array.isArray(v) ? v[0] : (v || null); }
@@ -714,10 +774,72 @@
     return map[S(a, 'A2')] || 1;
   }
 
-  function buildMaterials(answers) {
+  function resolveBudgetMode(answers, opts) {
+    if (opts && opts.budgetMode) return opts.budgetMode;
+    if (answers && answers.__budget_mode) return answers.__budget_mode;
+    return 'standard';
+  }
+
+  function shouldOfferBareBones(answers) {
     const a = answers || {};
+    return S(a, 'K42') === 'u50' || S(a, 'H30') === 'budget';
+  }
+
+  /** Plan-aware defer/simplify chips for bare-bones Step D. */
+  function buildBareBonesCutList(answers) {
+    const a = answers || {};
+    const cuts = [];
+    if (S(a, 'C12') === 'vaulted') {
+      cuts.push({ id: 'vault', if_present: 'Vaulted ceiling', suggestion: 'Switch to flat 8 ft' });
+    }
+    if (['3_5', '6plus'].includes(S(a, 'D18'))) {
+      cuts.push({ id: 'windows', if_present: S(a, 'D18') === '6plus' ? '6+ windows' : '3–5 windows', suggestion: 'Reduce to egress + 1–2 daylight openings' });
+    }
+    if (S(a, 'D19') === 'yes' || ['yes', 'maybe'].includes(S(a, 'D16'))) {
+      cuts.push({ id: 'opening', if_present: 'Large opening / beam', suggestion: 'Keep only if essential; flag must_hire_pro' });
+    }
+    if (['brick', 'stone'].includes(S(a, 'B7')) || S(a, 'G28') === 'brick') {
+      cuts.push({ id: 'cladding', if_present: 'Brick/stone cladding', suggestion: 'Fiber cement or vinyl EXAMPLE tier' });
+    }
+    if (hasWetRooms(a) && hasAny(a, 'A3', ['bathroom']) && hasAny(a, 'A3', ['kitchen'])) {
+      cuts.push({ id: 'wet', if_present: 'Full bath + kitchen in one go', suggestion: 'Phase wet room later; rough-in stubs only if affordable' });
+    }
+    const hvac = S(a, 'I35');
+    if (hvac === 'extend' || hvac === 'minisplit') {
+      cuts.push({ id: 'hvac', if_present: 'HVAC path chosen', suggestion: 'Pick one path; defer a second system' });
+    }
+    if (['same_plane', 'dormer'].includes(S(a, 'F24'))) {
+      cuts.push({ id: 'roof', if_present: 'Match / complex roof tie-in', suggestion: 'Prefer separate shed roof for cost' });
+    }
+    return cuts;
+  }
+
+  function buildBareBonesPlan(answers, opts) {
+    const mode = resolveBudgetMode(answers, opts);
+    return {
+      budget_mode: mode,
+      offer: shouldOfferBareBones(answers),
+      method: BARE_BONES_METHOD,
+      shell_must: BARE_BONES_SHELL_MUST,
+      phase_spend: BARE_BONES_PHASE_SPEND,
+      deferred_categories: DEFERRED_FINISH_CATEGORIES.slice(),
+      cut_list: buildBareBonesCutList(answers),
+      chips: {
+        shell_first: 'Shell first, finishes later',
+        lower_tier: 'Using lower EXAMPLE material tier',
+        deferred_prefix: 'Deferred: ',
+      },
+      disclaimer: 'EXAMPLE · not a bid · not a permit package. Bare-bones ≠ unsafe or unpermitted — structural, electrical, plumbing, and gas still need licensed pros where required.',
+    };
+  }
+
+  function buildMaterials(answers, opts) {
+    const a = answers || {};
+    const budgetMode = resolveBudgetMode(a, opts);
+    const bareBones = budgetMode === 'bare_bones';
     const scale = sizeScale(a);
-    const fm = S(a, 'H30') === 'budget' ? 0.85 : S(a, 'H30') === 'high' ? 1.35 : 1;
+    let fm = S(a, 'H30') === 'budget' ? 0.85 : S(a, 'H30') === 'high' ? 1.35 : 1;
+    if (bareBones) fm = Math.min(fm, 0.72); // bias EXAMPLE unit costs to lower tier
     const remodel = isRemodelOnly(a);
     const wet = hasWetRooms(a);
     const store = build3DStore(a);
@@ -728,6 +850,7 @@
     if (S(a, 'K44') === '10') contingencyPct = 10;
     if (S(a, 'K44') === '20') contingencyPct = 20;
     if (S(a, 'D19') === 'yes' || ['tight', 'steep'].includes(S(a, 'B8'))) contingencyPct = Math.max(contingencyPct, 15);
+    if (bareBones) contingencyPct = Math.max(contingencyPct, 15); // keep 15% even on small budgets
 
     const lines = [];
     BASE_LINES.forEach((base) => {
@@ -740,58 +863,88 @@
       if (base.category === 'Roofing' && base.item.indexOf('Shingles') >= 0) qty = Math.max(1, Math.round(3 * scale));
       if (base.category === 'Exterior cladding & trim') {
         qty = Math.round(450 * scale); unit = base.unit * fm;
-        if (masonry) supplier = 'SUP-MASON';
+        if (masonry && !bareBones) supplier = 'SUP-MASON';
+        if (bareBones) { unit = Math.min(unit, 2.75 * fm); supplier = 'SUP-HD'; } // fiber cement / vinyl EXAMPLE tier
       }
       if (base.item.indexOf('Windows') >= 0) {
         qty = wins; unit = fm > 1.1 ? 550 : fm < 0.9 ? 280 : 400;
-        if (!wins) include = false;
+        if (bareBones) {
+          unit = Math.min(unit, 260);
+          qty = Math.min(qty || 0, Math.max(2, Math.min(wins || 2, 3))); // egress + daylight mindset
+        }
+        if (!wins && !bareBones) include = false;
+        if (bareBones && !wins) { qty = 2; }
       }
       if (base.item.indexOf('Exterior door') >= 0) {
         const doors = M(a, 'D17');
         if (doors.includes('none') || (remodel && S(a, 'D17b') === 'no')) include = false;
-        else if (doors.includes('two_plus')) qty = 2;
+        else if (doors.includes('two_plus')) qty = bareBones ? 1 : 2; // defer second door
         unit *= fm;
+        if (bareBones) unit = Math.min(unit, 520);
       }
       if (base.category === 'Flooring') {
         qty = Math.round(192 * scale);
         const fl = S(a, 'H31');
         unit = (fl === 'hardwood' ? 6 : fl === 'tile' ? 5 : 3.5) * fm;
+        if (bareBones) unit = Math.min(unit, 2.4);
       }
       if (['Paint & finishes', 'Interior trim & doors'].includes(base.category)) { qty = scale; unit = base.unit * fm; }
-      if (base.category === 'Plumbing fixtures & allowances') { if (!wet) include = false; else { qty = scale; unit = base.unit * fm; } }
+      if (base.category === 'Plumbing fixtures & allowances') { if (!wet) include = false; else { qty = scale; unit = base.unit * fm; if (bareBones) unit = Math.min(unit, 1800); } }
       if (base.category === 'Electrical allowances' || base.category === 'HVAC allowances') {
         qty = scale; unit = base.unit * (fm > 1.1 ? 1.2 : 1);
         if (base.category === 'HVAC allowances' && S(a, 'I35') === 'no_change') include = false;
+        if (bareBones && base.category === 'HVAC allowances') unit = Math.min(unit, 1800);
       }
       if (base.item.indexOf('header') >= 0 && S(a, 'D19') === 'yes') qty = Math.max(qty, 2 * scale);
       if (!include) return;
+      const deferred = bareBones && DEFERRED_FINISH_CATEGORIES.includes(base.category);
       const extension = Math.round(qty * unit);
-      lines.push({ category: base.category, item: base.item, uom: base.uom, qty: Math.round(qty * 100) / 100,
-        unit: Math.round(unit * 100) / 100, extension, supplier, example: true });
+      lines.push({
+        category: base.category, item: base.item, uom: base.uom, qty: Math.round(qty * 100) / 100,
+        unit: Math.round(unit * 100) / 100, extension, supplier, example: true,
+        deferred: !!deferred,
+        phase: deferred ? 7 : null,
+      });
     });
 
-    const materialsSubtotal = lines.reduce((s, l) => s + l.extension, 0);
+    const activeLines = bareBones ? lines.filter((l) => !l.deferred) : lines;
+    const deferredLines = bareBones ? lines.filter((l) => l.deferred) : [];
+    const materialsSubtotal = activeLines.reduce((s, l) => s + l.extension, 0);
+    const deferredSubtotal = deferredLines.reduce((s, l) => s + l.extension, 0);
     const wastePct = 10;
     const materialsWithWaste = Math.round(materialsSubtotal * 1.1);
     const contingency = Math.round(materialsWithWaste * (contingencyPct / 100));
-    const labor = includeLabor ? Math.round(18000 * scale * (fm * 0.5 + 0.5)) : 0;
+    const labor = includeLabor ? Math.round(18000 * scale * (fm * 0.5 + 0.5) * (bareBones ? 0.85 : 1)) : 0;
     const taxPct = 8;
     const tax = Math.round(materialsWithWaste * 0.08);
+    const deferredNames = [...new Set(deferredLines.map((l) => l.category))];
     return {
-      lines, categories: CATEGORIES, suppliers: SUPPLIERS,
+      lines, // full category tree 1–17 (deferred grayed in UI)
+      activeLines, deferredLines,
+      categories: CATEGORIES, suppliers: SUPPLIERS,
+      budget_mode: budgetMode,
+      bare_bones: bareBones,
+      deferred_categories: deferredNames,
       rollup: {
         materialsSubtotal, wastePct, materialsWithWaste, contingencyPct, contingency,
-        labor, includeLabor, taxPct, tax, total: materialsWithWaste + contingency + labor + tax,
-        disclaimer: 'EXAMPLE ESTIMATES — not quotes. Illustrative US residential ballpark only.',
+        labor, includeLabor, taxPct, tax,
+        deferredSubtotal,
+        total: materialsWithWaste + contingency + labor + tax,
+        shellFirstTotal: materialsWithWaste + contingency + labor + tax,
+        disclaimer: bareBones
+          ? 'EXAMPLE ESTIMATES — bare-bones / shell-first. Finishes deferred. Not quotes or bids. Not a permit package.'
+          : 'EXAMPLE ESTIMATES — not quotes. Illustrative US residential ballpark only.',
       },
     };
   }
 
   global.HomePlanGuide = {
     sourcePath: '/workspace/remodel-app-content-v1.md',
-    version: '1.1',
+    version: '1.2',
     STAGES, RULES, SUPPLIERS, CATEGORIES,
+    DEFERRED_FINISH_CATEGORIES, BARE_BONES_METHOD, BARE_BONES_SHELL_MUST, BARE_BONES_PHASE_SPEND,
     getVisibleQuestions, evaluateRecommendations, buildMaterials, build3DStore,
+    buildBareBonesPlan, buildBareBonesCutList, shouldOfferBareBones, resolveBudgetMode,
     isRemodelOnly, isAdditionish, hasWetRooms, single: S, multi: M,
   };
 })(window);

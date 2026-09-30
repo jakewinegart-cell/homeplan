@@ -7,18 +7,19 @@
  * educational overlay — finished look when Studs OFF.
  * Interior P0: warm ceiling/room fills, painted finish + baseboard/ceiling/floor
  * when Studs OFF, fixture face polish (cabinets/sink/outlets).
- * Floor framing ON: omit opaque finish deck so I-beams read from above (and below).
+ * Floor framing ON: omit opaque finish deck so floor trusses read from above (and below).
  */
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const WALL_THICK = 0.45; // ~5.4 in visual shell
 const POST_OVERLAP = 0.025; // slight bite into post so no hairline gap
-/** Nominal 2×4 face width along wall (~1.5–1.8"). */
-const STUD_W = 0.15;
+/** Nominal 2×4 face width along wall (~1.5–1.8"). Readable lumber, not paper-thin. */
+const STUD_W = 1.75 / 12; // ~1.75 in face
 /** Plate / stud depth matches wall thickness so flush corners stay clean. */
 const STUD_D = WALL_THICK;
-const PLATE_H = 0.125;
+/** Bottom/top plate height ≈ 1.5 in (2× lumber flat). */
+const PLATE_H = 1.5 / 12;
 const STUD_OC = 16 / 12; // 16" on center
 const DEFAULT_WIN_W = 3;
 const DEFAULT_WIN_H = 4;
@@ -49,12 +50,15 @@ const BASEBOARD_T = 0.09; // ~1.1 in thick — readable trim
 const PAINT_LINER_T = 0.035; // thin interior paint face
 const CEILING_T = 0.08;
 const MAX_INTERIOR_LIGHTS = 3;
-/** Conceptual floor joists / I-beams — EXAMPLE spacing only (not engineering). */
+/** Conceptual floor trusses / joists — EXAMPLE spacing only (not engineering). */
 const FLOOR_JOIST_OC = 20 / 12; // ~20 in o.c. (EXAMPLE within 16–24 in)
-const FLOOR_IBEAM_H = 10 / 12; // ~10 in deep visual member
-const FLOOR_IBEAM_FLANGE_W = 5 / 12;
-const FLOOR_IBEAM_FLANGE_T = 0.06;
-const FLOOR_IBEAM_WEB_T = 0.04;
+const FLOOR_TRUSS_H = 10 / 12; // ~10 in overall depth (readable from orbit)
+const FLOOR_TRUSS_CHORD_T = 1.75 / 12; // ~1.75 in top/bottom chord thickness
+const FLOOR_TRUSS_CHORD_W = 3.5 / 12; // ~3.5 in chord face width
+const FLOOR_TRUSS_WEB_T = 1.5 / 12; // ~1.5 in diagonal/vertical web thickness
+const FLOOR_TRUSS_BAY = 1.5; // ~1.5 ft panels — steeper webs so depth reads on a ~10 in truss
+/** @deprecated alias — foundation pad clearance still keyed off truss height */
+const FLOOR_IBEAM_H = FLOOR_TRUSS_H;
 
 /** §2.1 cladding presets — albedo/roughness/metalness from Guidance answers only */
 const CLAD_PRESETS = {
@@ -134,7 +138,7 @@ function createView3D(container) {
   let raycaster, pointer, plane;
   let showDims = true;
   let showStuds = true; // educational overlay — finished look when OFF
-  let showFloorFraming = true; // I-beams / joists under floor (educational) — default ON so beams read first
+  let showFloorFraming = true; // floor trusses / joists under floor (educational) — default ON so depth reads first
   let floorFramingManual = false; // user touched toggle — stop auto foundation default
   let shadowsWanted = true; // user preference; auto-killed on narrow/low
   let sunLight = null;
@@ -899,18 +903,18 @@ function createView3D(container) {
   }
 
   function defaultFloorFramingFor(foundationType) {
-    // Always default ON (including slab): Jake wants beams visible first;
+    // Always default ON (including slab): Jake wants trusses visible first;
     // toggle still restores opaque finish flooring when unchecked.
     void foundationType;
     return true;
   }
 
   /**
-   * Conceptual steel I-beam / joist grid under a rectangular floor (EXAMPLE spacing).
-   * Members sit just below floor plane (floorY ≈ 0 in local group space).
-   * Not engineering — educational massing only.
+   * Conceptual wood floor TRUSS grid under a rectangular floor (EXAMPLE spacing).
+   * ~10 in deep with top/bottom chords + web diagonals/verticals so depth reads
+   * in side and orbit views. Not engineering — educational massing only.
    */
-  function addFloorFraming(cx, cz, lenX, lenZ, group, steelMat, opts) {
+  function addFloorFraming(cx, cz, lenX, lenZ, group, lumberMat, opts) {
     const w = Math.abs(lenX);
     const d = Math.abs(lenZ);
     if (w < 2 || d < 2 || !group) return null;
@@ -919,89 +923,132 @@ function createView3D(container) {
     group.add(wrap);
 
     const oc = (opts && opts.ocFt) || FLOOR_JOIST_OC;
-    const beamH = (opts && opts.beamH) || FLOOR_IBEAM_H;
-    const fw = FLOOR_IBEAM_FLANGE_W;
-    const ft = FLOOR_IBEAM_FLANGE_T;
-    const wt = FLOOR_IBEAM_WEB_T;
-    // Top of I-beam just under floor slab (~0.02–0.05 below y=0 local)
+    const trussH = (opts && opts.beamH) || FLOOR_TRUSS_H;
+    const chordT = FLOOR_TRUSS_CHORD_T;
+    const chordW = FLOOR_TRUSS_CHORD_W;
+    const webT = FLOOR_TRUSS_WEB_T;
+    const bay = FLOOR_TRUSS_BAY;
+    // Top of truss just under floor slab (~0.02–0.05 below y=0 local)
     const topY = (opts && opts.topY != null) ? opts.topY : -0.04;
-    const midY = topY - beamH / 2;
-    const mat = steelMat || steelMaterial();
+    const midY = topY - trussH / 2;
+    const mat = lumberMat || new THREE.MeshStandardMaterial({
+      color: new THREE.Color(0xc9a66b), roughness: 0.9, metalness: 0.02,
+    });
 
-    // Primary joists span the shorter direction (common conceptual cue)
-    const spanShortX = w <= d;
-    const spanLen = spanShortX ? w : d;
-    const runLen = spanShortX ? d : w;
-    const n = Math.max(2, Math.round(runLen / oc) + 1);
+    const tag = { type: 'floorTruss', label: 'Floor truss', example: true };
+    const girderTag = { type: 'floorTruss', label: 'Floor girder', example: true };
 
-    function addIBeam(x, z, length, rotY) {
+    function tagMesh(mesh, ud) {
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.userData = Object.assign({}, ud);
+      return mesh;
+    }
+
+    /** Web member in truss local X–Y plane (span along +X). */
+    function addWebXY(g, x0, y0, x1, y1, thick, depth, ud) {
+      const dx = x1 - x0;
+      const dy = y1 - y0;
+      const len = Math.hypot(dx, dy);
+      if (len < 0.04) return;
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(len, thick, depth), mat);
+      mesh.position.set((x0 + x1) / 2, (y0 + y1) / 2, 0);
+      mesh.rotation.z = Math.atan2(dy, dx);
+      tagMesh(mesh, ud);
+      g.add(mesh);
+    }
+
+    function addFloorTruss(x, z, length, rotY) {
       const g = new THREE.Group();
       g.position.set(x, midY, z);
       g.rotation.y = rotY || 0;
-      g.userData = { type: 'floorIBeam', label: 'Floor I-beam', example: true };
-      // web
-      const web = new THREE.Mesh(new THREE.BoxGeometry(length, beamH - ft * 2, wt), mat);
-      web.castShadow = true;
-      web.receiveShadow = true;
-      web.userData = { type: 'floorIBeam', label: 'Floor I-beam', example: true };
-      g.add(web);
-      // flanges
-      const top = new THREE.Mesh(new THREE.BoxGeometry(length, ft, fw), mat);
-      top.position.y = beamH / 2 - ft / 2;
-      top.castShadow = true;
-      top.userData = { type: 'floorIBeam', label: 'Floor I-beam', example: true };
-      g.add(top);
-      const bot = new THREE.Mesh(new THREE.BoxGeometry(length, ft, fw), mat);
-      bot.position.y = -(beamH / 2 - ft / 2);
-      bot.castShadow = true;
-      bot.userData = { type: 'floorIBeam', label: 'Floor I-beam', example: true };
-      g.add(bot);
+      g.userData = Object.assign({}, tag);
+
+      const halfL = length / 2;
+      const yTop = trussH / 2 - chordT / 2;
+      const yBot = -(trussH / 2 - chordT / 2);
+      const innerTop = trussH / 2 - chordT;
+      const innerBot = -(trussH / 2 - chordT);
+      const clearH = Math.max(0.15, innerTop - innerBot);
+
+      // Top + bottom chords (full span) — thick enough to read as lumber
+      const topChord = new THREE.Mesh(new THREE.BoxGeometry(length, chordT, chordW), mat);
+      topChord.position.set(0, yTop, 0);
+      tagMesh(topChord, tag);
+      g.add(topChord);
+      const botChord = new THREE.Mesh(new THREE.BoxGeometry(length, chordT, chordW), mat);
+      botChord.position.set(0, yBot, 0);
+      tagMesh(botChord, tag);
+      g.add(botChord);
+
+      // End verticals + panel webs (diagonals + intermediate verticals)
+      const nBay = Math.max(1, Math.round(length / bay));
+      const panel = length / nBay;
+      for (let i = 0; i <= nBay; i++) {
+        const xV = -halfL + i * panel;
+        // vertical web
+        const vert = new THREE.Mesh(new THREE.BoxGeometry(webT, clearH, chordW * 0.85), mat);
+        vert.position.set(xV, 0, 0);
+        tagMesh(vert, tag);
+        g.add(vert);
+        if (i < nBay) {
+          const xA = xV;
+          const xB = xV + panel;
+          // Alternating diagonal for classic open-web look
+          if (i % 2 === 0) {
+            addWebXY(g, xA + webT * 0.4, innerBot, xB - webT * 0.4, innerTop, webT, chordW * 0.75, tag);
+          } else {
+            addWebXY(g, xA + webT * 0.4, innerTop, xB - webT * 0.4, innerBot, webT, chordW * 0.75, tag);
+          }
+        }
+      }
       wrap.add(g);
     }
+
+    // Primary trusses span the shorter direction (common conceptual cue)
+    const spanShortX = w <= d;
+    const runLen = spanShortX ? d : w;
+    const n = Math.max(2, Math.round(runLen / oc) + 1);
 
     const inset = Math.min(0.35, Math.min(w, d) * 0.04);
     for (let i = 0; i < n; i++) {
       const t = n === 1 ? 0.5 : i / (n - 1);
       if (spanShortX) {
-        // joists parallel to X, spaced along Z
         const z = cz - d / 2 + inset + t * (d - inset * 2);
-        addIBeam(cx, z, Math.max(1, w - inset * 2), 0);
+        addFloorTruss(cx, z, Math.max(1, w - inset * 2), 0);
       } else {
-        // joists parallel to Z, spaced along X
         const x = cx - w / 2 + inset + t * (w - inset * 2);
-        addIBeam(x, cz, Math.max(1, d - inset * 2), Math.PI / 2);
+        addFloorTruss(x, cz, Math.max(1, d - inset * 2), Math.PI / 2);
       }
     }
 
-    // One or two perimeter/girder beams along the long edges (heavier visual)
-    const girderH = beamH * 1.15;
-    const girderY = topY - girderH / 2;
-    function addGirder(x, z, length, rotY) {
-      const g = new THREE.Group();
-      g.position.set(x, girderY, z);
-      g.rotation.y = rotY || 0;
-      g.userData = { type: 'floorIBeam', label: 'Floor girder', example: true };
-      const web = new THREE.Mesh(new THREE.BoxGeometry(length, girderH - ft * 2, wt * 1.4), mat);
-      web.castShadow = true;
-      web.userData = { type: 'floorIBeam', label: 'Floor girder', example: true };
-      g.add(web);
-      const top = new THREE.Mesh(new THREE.BoxGeometry(length, ft * 1.15, fw * 1.15), mat);
-      top.position.y = girderH / 2 - ft * 0.55;
-      top.userData = { type: 'floorIBeam', label: 'Floor girder', example: true };
-      g.add(top);
-      const bot = new THREE.Mesh(new THREE.BoxGeometry(length, ft * 1.15, fw * 1.15), mat);
-      bot.position.y = -(girderH / 2 - ft * 0.55);
-      bot.userData = { type: 'floorIBeam', label: 'Floor girder', example: true };
-      g.add(bot);
-      wrap.add(g);
+    // Perimeter girders — same open-web truss look (labeled girder) so side views
+    // show chords + diagonals instead of a solid flat band.
+    function addGirderTruss(x, z, length, rotY) {
+      // Re-use addFloorTruss then re-tag as girder
+      const before = wrap.children.length;
+      addFloorTruss(x, z, length, rotY);
+      for (let i = before; i < wrap.children.length; i++) {
+        const g = wrap.children[i];
+        g.userData = Object.assign({}, girderTag);
+        g.traverse((c) => {
+          if (c.userData && c.userData.type === 'floorTruss') {
+            c.userData = Object.assign({}, girderTag);
+          }
+        });
+      }
     }
     if (spanShortX) {
-      // girders along X at near/far Z
-      addGirder(cx, cz - d / 2 + inset * 0.5, Math.max(1, w - inset), 0);
-      addGirder(cx, cz + d / 2 - inset * 0.5, Math.max(1, w - inset), 0);
+      // Girders along X (span direction) at near/far Z — plus rim members on short ends
+      addGirderTruss(cx, cz - d / 2 + inset * 0.5, Math.max(1, w - inset), 0);
+      addGirderTruss(cx, cz + d / 2 - inset * 0.5, Math.max(1, w - inset), 0);
+      addGirderTruss(cx - w / 2 + inset * 0.5, cz, Math.max(1, d - inset), Math.PI / 2);
+      addGirderTruss(cx + w / 2 - inset * 0.5, cz, Math.max(1, d - inset), Math.PI / 2);
     } else {
-      addGirder(cx - w / 2 + inset * 0.5, cz, Math.max(1, d - inset), Math.PI / 2);
-      addGirder(cx + w / 2 - inset * 0.5, cz, Math.max(1, d - inset), Math.PI / 2);
+      addGirderTruss(cx - w / 2 + inset * 0.5, cz, Math.max(1, d - inset), Math.PI / 2);
+      addGirderTruss(cx + w / 2 - inset * 0.5, cz, Math.max(1, d - inset), Math.PI / 2);
+      addGirderTruss(cx, cz - d / 2 + inset * 0.5, Math.max(1, w - inset), 0);
+      addGirderTruss(cx, cz + d / 2 - inset * 0.5, Math.max(1, w - inset), 0);
     }
 
     return wrap;
@@ -2180,7 +2227,6 @@ function createView3D(container) {
     const beamMat = mat(0x7a746c, { roughness: 0.88 });
     const attachMat = mat(0x2f6f6a, { emissive: 0x1a3d3a, emissiveIntensity: 0.12 });
     const frameWallMat = showStuds ? lumberMat : wallMat;
-    const steelMat = steelMaterial();
     // Educational floor framing: default ON for all foundations unless user overrode
     if (!floorFramingManual) {
       showFloorFraming = defaultFloorFramingFor(foundKey);
@@ -2240,7 +2286,7 @@ function createView3D(container) {
 
       (plan.rooms || []).forEach((r) => {
         const fw = Math.abs(r.w), fd = Math.abs(r.h);
-        // Opaque finish flooring hides I-beams from above — omit when Floor framing is on
+        // Opaque finish flooring hides trusses from above — omit when Floor framing is on
         if (!showFloorFraming) {
           const fmesh = boxAt(fw, 0.14, fd,
             r.x + r.w / 2 - ox, 0.07, r.y + r.h / 2 - oz, floorMat, rootGroup);
@@ -2471,11 +2517,11 @@ function createView3D(container) {
         boxAt(2, 0.15, 2, 0, maxWallH + 1.5, 0, glassMat, rootGroup);
       }
 
-      // Conceptual floor framing / I-beams under floor plane (EXAMPLE spacing)
+      // Conceptual floor framing / trusses under floor plane (EXAMPLE spacing)
       if (showFloorFraming) {
         const bb = planBounds(plan);
         if (bb) {
-          addFloorFraming(0, 0, Math.max(bb.w, 6), Math.max(bb.d, 6), rootGroup, steelMat, {
+          addFloorFraming(0, 0, Math.max(bb.w, 6), Math.max(bb.d, 6), rootGroup, lumberMat, {
             topY: -0.02,
           });
         }
@@ -2502,7 +2548,7 @@ function createView3D(container) {
             ch.position.y += pierH;
           });
         } else if (bb && ft === 'slab') {
-          // Framing on: thin pad below I-beams so members read from above.
+          // Framing on: thin pad below trusses so members read from above.
           // Framing off: normal ~9 in reveal under finish floor.
           if (showFloorFraming) {
             const padH = 0.2;
@@ -2516,7 +2562,7 @@ function createView3D(container) {
               { type: 'foundation', label: 'Foundation' });
           }
         } else if (bb && ft === 'crawl') {
-          // Hollow stem ring — crawl volume open so I-beams / joists read
+          // Hollow stem ring — crawl volume open so floor trusses / joists read
           addStemWallRing(0, 0, Math.max(bb.w, 4) + 0.5, Math.max(bb.d, 4) + 0.5, 2.5, -2.5, foundMat, rootGroup);
         } else if (bb && ft === 'basement') {
           addStemWallRing(0, 0, Math.max(bb.w, 4) + 0.5, Math.max(bb.d, 4) + 0.5, 8, -8, foundMat, rootGroup);
@@ -2554,7 +2600,7 @@ function createView3D(container) {
           const pierH = store.pier_height_ft > 0 ? store.pier_height_ft : PIER_H_DEFAULT;
           addPierFoundation(ax, az, addL, addW, pierH, foundMat, beamMat, rootGroup);
         } else if (ft === 'slab') {
-          // Framing on: thin pad under I-beams (beams readable from above).
+          // Framing on: thin pad under trusses (readable from above).
           // Framing off: 4–12 in reveal below cladding line + finish floor.
           if (showFloorFraming) {
             const padH = 0.2;
@@ -2572,7 +2618,7 @@ function createView3D(container) {
         }
       }
 
-      // Opaque finish flooring hides I-beams from above — omit when Floor framing is on.
+      // Opaque finish flooring hides trusses from above — omit when Floor framing is on.
       // Slab keeps thin concrete foundation reveal below; fixtures stay at same Y (beam plane).
       if (!showFloorFraming) {
         const fmesh = boxAt(addL, 0.15, addW, ax, floorY + 0.08, az, floorMat, rootGroup);
@@ -2586,7 +2632,7 @@ function createView3D(container) {
         const fg = new THREE.Group();
         fg.position.set(ax, floorY, az);
         rootGroup.add(fg);
-        addFloorFraming(0, 0, addL, addW, fg, steelMat, { topY: -0.02 });
+        addFloorFraming(0, 0, addL, addW, fg, lumberMat, { topY: -0.02 });
       }
       lightCenters.push({
         x: ax, y: floorY + wallH * 0.88, z: az,
@@ -2770,7 +2816,8 @@ function createView3D(container) {
       case 'cornerPost': return 'Corner post';
       case 'cladding': return 'Cladding';
       case 'roof': return 'Roof';
-      case 'floorIBeam': return ud.label || 'Floor I-beam';
+      case 'floorTruss': return ud.label || 'Floor truss';
+      case 'floorIBeam': return ud.label || 'Floor truss';
       case 'floorFraming': return 'Floor framing';
       case 'pier': return ud.label || 'Pier / sonotube';
       case 'pierFoundation': return 'Pier / sonotube';
@@ -3647,7 +3694,7 @@ function createView3D(container) {
       if (!h.object || h.object.isSprite) continue;
       const ud = resolveTagUserData(h.object) || {};
       if (ud.type === 'ground' || ud.type === 'roof' || ud.type === 'floorFraming'
-          || ud.type === 'floorIBeam' || ud.type === 'pier' || ud.type === 'pierFoundation'
+          || ud.type === 'floorTruss' || ud.type === 'floorIBeam' || ud.type === 'pier' || ud.type === 'pierFoundation'
           || ud.type === 'gradeBeam' || ud.type === 'grid') continue;
       return h.point.clone();
     }

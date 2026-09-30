@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>HomePlan — Remodel & Additions</title>
-  <link rel="stylesheet" href="styles.css?v=winlook1" />
+  <link rel="stylesheet" href="styles.css?v=truss1" />
 </head>
 <body>
   <div id="app">
@@ -182,6 +182,22 @@
             <h1>Project guidance</h1>
             <!-- REMODEL_GUIDE_HOOK: /workspace/remodel-app-content-v1.md → guide-data.js -->
             <p class="lede">Stages A–K from Remodel Guide. Answers drive tips, materials, and 3D height/pitch.</p>
+            <div id="bare-bones-offer" class="bare-bones-offer" hidden>
+              <div class="bare-bones-offer-copy">
+                <strong>Bare-bones plan</strong>
+                <span class="muted small">Shell first, finishes later — fits Under $50k (EXAMPLE) or Budget-friendly finish.</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-accent" id="btn-bare-bones-accept">Use bare-bones plan</button>
+              <button type="button" class="btn btn-sm btn-ghost" id="btn-bare-bones-dismiss" title="Dismiss offer">Not now</button>
+            </div>
+            <div class="budget-mode-bar" id="guidance-budget-bar">
+              <span class="budget-mode-label">Budget plan</span>
+              <div class="budget-mode-toggle" role="group" aria-label="Budget mode">
+                <button type="button" class="budget-chip active" data-budget-mode="standard" id="guid-budget-standard">Standard</button>
+                <button type="button" class="budget-chip" data-budget-mode="bare_bones" id="guid-budget-bare">Small-budget / bare-bones</button>
+              </div>
+              <span class="example-tag">EXAMPLE · not a bid</span>
+            </div>
           </header>
           <div class="guidance-layout">
             <div class="qa-flow">
@@ -221,7 +237,40 @@
           <header class="panel-header">
             <h1>Materials &amp; rough pricing</h1>
             <p class="lede example-banner">All dollars are <strong>EXAMPLE ESTIMATES</strong> — not quotes or bids. From Remodel Guide content v1.</p>
+            <div class="budget-mode-bar" id="materials-budget-bar">
+              <span class="budget-mode-label">Budget plan</span>
+              <div class="budget-mode-toggle" role="group" aria-label="Budget mode">
+                <button type="button" class="budget-chip active" data-budget-mode="standard" id="mat-budget-standard">Standard</button>
+                <button type="button" class="budget-chip" data-budget-mode="bare_bones" id="mat-budget-bare">Small-budget / bare-bones</button>
+              </div>
+              <span id="bare-bones-chips" class="bare-bones-chips" hidden>
+                <span class="bb-chip">Shell first, finishes later</span>
+                <span class="bb-chip">Using lower EXAMPLE material tier</span>
+                <span class="bb-chip" id="bb-deferred-chip">Deferred: finishes</span>
+              </span>
+              <span class="example-tag">EXAMPLE · not a bid · not a permit package</span>
+            </div>
           </header>
+
+          <div id="bare-bones-method-panel" class="bare-bones-method-panel" hidden>
+            <div class="bb-method-head">
+              <h2>Bare-bones method</h2>
+              <p class="muted small">Five planning steps — check them off as you lock scope. Still EXAMPLE only; <code>must_hire_pro</code> / permit awareness unchanged.</p>
+            </div>
+            <ol id="bb-method-steps" class="bb-method-steps"></ol>
+            <div class="bb-method-cols">
+              <div>
+                <h3>Shell must-haves</h3>
+                <ul id="bb-shell-must" class="bb-list"></ul>
+              </div>
+              <div>
+                <h3>Defer / simplify</h3>
+                <ul id="bb-cut-list" class="bb-list"></ul>
+              </div>
+            </div>
+            <p class="muted small" id="bb-method-disclaimer"></p>
+          </div>
+
           <div class="materials-summary" id="materials-summary">
             <div class="stat-card">
               <span class="stat-label">EXAMPLE total</span>
@@ -285,7 +334,7 @@
                 <input type="checkbox" id="view3d-studs-toggle" checked />
                 Studs
               </label>
-              <label class="view3d-dims-toggle" title="Conceptual floor framing / I-beams under floor (EXAMPLE spacing; default ON — hides finish deck so beams read from above)">
+              <label class="view3d-dims-toggle" title="Conceptual floor trusses / joists under floor (EXAMPLE ~16–24 in o.c.; default ON — hides finish deck so trusses read from above)">
                 <input type="checkbox" id="view3d-floorframing-toggle" checked />
                 Floor framing
               </label>
@@ -560,11 +609,11 @@
     }
   }
   </script>
-  <script src="walkthrough-data.js?v=winlook1"></script>
-  <script src="guide-data.js?v=winlook1"></script>
-  <script src="floorplan.js?v=winlook1"></script>
-  <script src="wizard-data.js?v=winlook1"></script>
-  <script type="module" src="view3d.js?v=winlook1"></script>
-  <script src="app.js?v=winlook1"></script>
+  <script src="walkthrough-data.js?v=truss1"></script>
+  <script src="guide-data.js?v=truss1"></script>
+  <script src="floorplan.js?v=truss1"></script>
+  <script src="wizard-data.js?v=truss1"></script>
+  <script type="module" src="view3d.js?v=truss1"></script>
+  <script src="app.js?v=truss1"></script>
 </body>
 </html>

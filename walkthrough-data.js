@@ -324,15 +324,82 @@
     return bands;
   }
 
-  function generate(answers, plan) {
+  function resolveBudgetMode(answers, opts) {
+    if (opts && opts.budgetMode) return opts.budgetMode;
+    if (answers && answers.__budget_mode) return answers.__budget_mode;
+    if (guideResolve) {
+      try { return guideResolve(answers, opts); } catch (_) {}
+    }
+    return 'standard';
+  }
+  function guideResolve(answers, opts) {
+    const g = global.HomePlanGuide;
+    if (g && g.resolveBudgetMode) return g.resolveBudgetMode(answers, opts);
+    return 'standard';
+  }
+
+  function injectBareBonesTips(steps, bareBones) {
+    if (!bareBones || !steps || !steps.length) return steps;
+    const out = steps.map((s) => {
+      const copy = { ...s, watch_outs: (s.watch_outs || []).slice() };
+      if (s.id === 'WT_PREP_01') {
+        copy.watch_outs = copy.watch_outs.concat([
+          { tone: 'tip', text: 'Bare-bones: shell first, finishes later. Fund weather-tight + drywall before flooring, paint, trim, and fixtures.' },
+          { tone: 'example', text: 'Prep tip — protect paths and stage materials for shell work first; finish deliveries can wait.' },
+        ]);
+      }
+      if (s.id === 'WT_DRY_01') {
+        copy.watch_outs = copy.watch_outs.concat([
+          { tone: 'tip', text: 'Bare-bones pause — finishes can wait. Live with primer if needed; flooring/paint/trim/fixtures are Phase 7.' },
+        ]);
+        copy.body = (copy.body || '') + ' Bare-bones pause after drywall: shell is the goal; finishes can wait.';
+      }
+      if (s.id === 'WT_FIN_01') {
+        copy.watch_outs = copy.watch_outs.concat([
+          { tone: 'tip', text: 'Deferred in bare-bones mode until shell is dry and paid (Phase 7).' },
+        ]);
+        copy.deferred = true;
+      }
+      return copy;
+    });
+    // Ensure a pause marker step appears after drywall when present
+    const dryIdx = out.findIndex((s) => s.id === 'WT_DRY_01');
+    if (dryIdx >= 0 && !out.some((s) => s.id === 'WT_BB_PAUSE')) {
+      out.splice(dryIdx + 1, 0, {
+        id: 'WT_BB_PAUSE',
+        phase: out[dryIdx].phase,
+        phaseTitle: out[dryIdx].phaseTitle,
+        title: 'Bare-bones pause — shell first, finishes later',
+        body: 'Weather-tight shell through paint-ready drywall is funded. Flooring, paint, trim, and fixtures can wait (Phase 7). Contingency still protects roof and flashing — not the backsplash. EXAMPLE · not a bid · not a permit package.',
+        watch_outs: [
+          { tone: 'tip', text: 'Bare-bones pause — finishes can wait' },
+          { tone: 'awareness', text: 'must_hire_pro / permit awareness unchanged — do not skip licensed work where required.' },
+        ],
+        dont_proceed_until: ['Shell dry-in complete', 'Contingency reserved for weatherproofing'],
+        materials_refs: [11, 12, 13],
+        materials_names: ['Flooring', 'Interior trim & doors', 'Paint & finishes'],
+        diagram_type: 'sequence_flow',
+        deferred: true,
+        bare_bones: true,
+      });
+    }
+    return out;
+  }
+
+  function generate(answers, plan, opts) {
     const guide = global.HomePlanGuide;
+    const budgetMode = resolveBudgetMode(answers || {}, opts);
+    const bareBones = budgetMode === 'bare_bones';
     const store = guide ? guide.build3DStore(answers || {}) : {};
     const ctx = deriveContext(answers, plan, store);
-    const steps = STEPS.filter((s) => includeStep(s.id, ctx)).map((s) => ({
+    ctx.budget_mode = budgetMode;
+    ctx.bare_bones = bareBones;
+    let steps = STEPS.filter((s) => includeStep(s.id, ctx)).map((s) => ({
       ...s,
       body: fill(s.body, ctx.tokens),
       materials_names: (s.materials_refs || []).map((id) => CAT[id]).filter(Boolean),
     }));
+    steps = injectBareBonesTips(steps, bareBones);
     const phases = [];
     steps.forEach((s) => {
       let p = phases.find((x) => x.id === s.phase);
@@ -342,22 +409,36 @@
 
     let materials = null;
     try {
-      if (guide && guide.buildMaterials) materials = guide.buildMaterials(answers || {});
+      if (guide && guide.buildMaterials) materials = guide.buildMaterials(answers || {}, { budgetMode });
     } catch (_) {}
+
+    let materialsOrder = buildMaterialsOrder(ctx);
+    if (bareBones) {
+      materialsOrder = materialsOrder.map((g) => {
+        if (g.id === 'BUY_FINISH') {
+          return { ...g, deferred: true, note: (g.note || '') + ' Bare-bones: Phase 7 — defer until shell is dry and paid.' };
+        }
+        return g;
+      });
+    }
 
     return {
       generatedAt: new Date().toISOString(),
       sourcePath: '/workspace/remodel-app-walkthrough-feature-v1.md',
+      budget_mode: budgetMode,
+      bare_bones: bareBones,
       ctx,
       tokens: ctx.tokens,
       defaultsUsed: ctx.defaultsUsed,
       phases,
       steps,
       permit: buildPermitCallouts(ctx),
-      materialsOrder: buildMaterialsOrder(ctx),
+      materialsOrder,
       daySequence: buildDaySequence(ctx),
       materials,
-      disclaimer: 'Illustrative homeowner guide based on your answers and drawing. Not sealed engineering, not a permit package, not a bid. Prices and day bands are EXAMPLE ESTIMATES. App does not file permits or hire contractors.',
+      disclaimer: bareBones
+        ? 'Illustrative bare-bones / shell-first guide. EXAMPLE ESTIMATES only — not a bid, not a permit package, not sealed engineering. Structural/MEP still need licensed pros where required. App does not file permits or hire contractors.'
+        : 'Illustrative homeowner guide based on your answers and drawing. Not sealed engineering, not a permit package, not a bid. Prices and day bands are EXAMPLE ESTIMATES. App does not file permits or hire contractors.',
     };
   }
 
