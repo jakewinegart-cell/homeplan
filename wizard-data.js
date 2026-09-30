@@ -1579,6 +1579,45 @@
         a.roof_style = a.F24style;
         break;
       }
+      case 'cladding':
+      case 'cladding_texture': {
+        const raw = String(value || '').toLowerCase().replace(/[\s-]+/g, '_');
+        const map = {
+          wood: 'wood', clapboard: 'wood', wood_siding: 'wood',
+          fiber: 'fiber', fiber_cement: 'fiber', fibercement: 'fiber',
+          vinyl: 'vinyl',
+          brick: 'brick',
+          stone: 'stone', stone_veneer: 'stone',
+          stucco: 'stucco',
+          eng_wood: 'eng_wood', engineered_wood: 'eng_wood',
+          match: 'match_b', match_b: 'match_b',
+          other: 'other', mixed: 'other',
+        };
+        a.G28 = map[raw] || raw || 'fiber';
+        break;
+      }
+      case 'roofing':
+      case 'roofing_texture': {
+        const raw = String(value || '').toLowerCase();
+        const map = {
+          asphalt: 'asphalt', shingle: 'asphalt', shingles: 'asphalt',
+          metal: 'metal', tile: 'tile', slate: 'slate',
+          match: 'match', unsure: 'unsure',
+        };
+        a.F25 = map[raw] || 'asphalt';
+        if (a.F0 == null || a.F0 === 'no') a.F0 = 'yes';
+        break;
+      }
+      case 'cladding_color': {
+        const id = String(value || 'natural');
+        a.cladding_color = id || 'natural';
+        break;
+      }
+      case 'cladding_hex': {
+        if (value == null || value === '' || value === 'natural') delete a.cladding_hex;
+        else a.cladding_hex = String(value);
+        break;
+      }
       case 'roof_tie_in':
         a.F24 = value === 'low-slope' ? 'flat' : value;
         break;

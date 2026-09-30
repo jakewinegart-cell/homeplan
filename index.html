@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>HomePlan — Remodel & Additions</title>
-  <link rel="stylesheet" href="styles.css?v=realism2" />
+  <link rel="stylesheet" href="styles.css?v=look1" />
 </head>
 <body>
   <div id="app">
@@ -97,6 +97,10 @@
             <button type="button" class="tool-btn" id="btn-roof" title="Roof pitch &amp; style">
               <span class="tool-icon">⌃</span>
               <span>Roof</span>
+            </button>
+            <button type="button" class="tool-btn" id="btn-look" title="Look — cladding, roofing, roof style, siding color (EXAMPLE)">
+              <span class="tool-icon">◈</span>
+              <span>Look</span>
             </button>
             <div class="tool-divider"></div>
             <button type="button" class="tool-btn" data-tool="undo" id="btn-undo" title="Undo">
@@ -324,6 +328,7 @@
               <span id="view3d-edit-label">Editing window</span>
               <button type="button" class="btn btn-sm btn-accent" id="view3d-edit-done">Done</button>
             </div>
+            <button type="button" class="btn btn-sm btn-ghost" id="btn-look-3d" title="Look / appearance — cladding, roof, color (EXAMPLE)">Look</button>
             <button type="button" class="btn btn-sm btn-ghost" id="btn-foundation-3d" title="Foundation — slab, crawl, basement, or piers / sonotubes">Foundation</button>
             <div class="view3d-toggles">
               <label class="view3d-dims-toggle" title="Toggle dimension labels">
@@ -367,6 +372,30 @@
               </label>
               <button type="button" class="btn btn-sm btn-accent v3d-insp-done" id="v3d-win-done">Done</button>
             </aside>
+            <aside id="view3d-look-panel" class="view3d-look-panel" hidden>
+              <div class="v3d-insp-head">
+                <strong>Look <span class="example-tag">EXAMPLE</span></strong>
+                <button type="button" class="v3d-insp-close" id="v3d-look-close" aria-label="Close look panel">×</button>
+              </div>
+              <p class="muted small look-lead">Change appearance without redoing Guidance. Same answers the 3D view already uses. Illustrative — not a product sample.</p>
+              <div class="look-section">
+                <div class="roof-picker-label">Cladding</div>
+                <div class="look-chip-row" id="look-cladding-chips" role="group" aria-label="Cladding"></div>
+              </div>
+              <div class="look-section">
+                <div class="roof-picker-label">Roofing</div>
+                <div class="look-chip-row" id="look-roofing-chips" role="group" aria-label="Roofing"></div>
+              </div>
+              <div class="look-section">
+                <div class="roof-picker-label">Roof style</div>
+                <div class="look-chip-row" id="look-style-chips" role="group" aria-label="Roof style"></div>
+              </div>
+              <div class="look-section">
+                <div class="roof-picker-label">Siding color</div>
+                <div class="look-swatch-row" id="look-color-chips" role="group" aria-label="Siding color"></div>
+              </div>
+              <p class="muted small look-footnote">Guidance stays the source of truth — edit it there anytime. Colors tint cladding albedo. Look turns Studs off so siding shows; turn Studs on again for framing. Foundation / pier dials stay on Foundation.</p>
+            </aside>
             <aside id="view3d-pier-panel" class="view3d-pier-panel" hidden>
               <div class="v3d-insp-head">
                 <strong>Piers / pylons</strong>
@@ -395,7 +424,7 @@
           </div>
           <div class="view3d-hint muted small" id="view3d-hint">
             Conceptual visualization — not construction documents. Materials and lighting are illustrative. Not a bid, permit set, or product sample.
-            · <strong>+ Window / + Door</strong> then tap a wall to place · Double-tap opening to edit/move · Drag to orbit · Hold a part to name it · Dims / Studs / Floor framing / Shadows
+            · <strong>Look</strong> for cladding, roofing, and color · <strong>+ Window / + Door</strong> then tap a wall to place · Double-tap opening to edit/move · Drag to orbit · Hold a part to name it · Dims / Studs / Floor framing / Shadows
           </div>
         </div>
       </section>
@@ -694,11 +723,11 @@
     }
   }
   </script>
-  <script src="walkthrough-data.js?v=realism2"></script>
-  <script src="guide-data.js?v=realism2"></script>
-  <script src="floorplan.js?v=realism2"></script>
-  <script src="wizard-data.js?v=realism2"></script>
-  <script type="module" src="view3d.js?v=realism2"></script>
-  <script src="app.js?v=realism2"></script>
+  <script src="walkthrough-data.js?v=look1"></script>
+  <script src="guide-data.js?v=look1"></script>
+  <script src="floorplan.js?v=look1"></script>
+  <script src="wizard-data.js?v=look1"></script>
+  <script type="module" src="view3d.js?v=look1"></script>
+  <script src="app.js?v=look1"></script>
 </body>
 </html>

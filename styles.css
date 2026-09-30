@@ -1175,6 +1175,73 @@ button { cursor: pointer; }
   overflow-y: auto;
 }
 .view3d-pier-panel[hidden] { display: none !important; }
+
+/* Look / appearance (look1) — quick cladding, roof, color */
+.view3d-look-panel {
+  position: absolute; top: 0.75rem; left: 0.75rem; z-index: 6;
+  width: min(292px, calc(100% - 1.5rem));
+  max-height: calc(100% - 1.5rem);
+  overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 0.7rem 0.85rem 0.85rem;
+  display: flex; flex-direction: column; gap: 0.35rem;
+}
+.view3d-look-panel[hidden] { display: none !important; }
+.view3d-look-panel .example-tag { margin-left: 0.25rem; vertical-align: middle; }
+.look-lead { margin: 0 0 0.15rem; line-height: 1.35; }
+.look-section { margin-top: 0.35rem; }
+.look-chip-row { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.look-chip {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 0.28rem 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 650;
+  min-height: 32px;
+  cursor: pointer;
+}
+.look-chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.look-chip.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.look-swatch-row { display: flex; flex-wrap: wrap; gap: 0.45rem 0.4rem; }
+.look-swatch-wrap {
+  display: flex; flex-direction: column; align-items: center; gap: 0.12rem;
+  width: 52px; background: none; border: none; padding: 0; cursor: pointer; color: var(--ink-muted);
+  font-size: 0.62rem; font-weight: 650; line-height: 1.15;
+}
+.look-swatch {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 2px solid rgba(0,0,0,0.18);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35);
+}
+.look-swatch.is-natural {
+  background: conic-gradient(#C4A574, #E8E4DC, #8B4A3A, #9A9590, #C4A574);
+}
+.look-swatch-wrap.active .look-swatch {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.look-swatch-wrap.active { color: var(--accent); }
+.look-footnote { margin: 0.35rem 0 0; line-height: 1.35; }
+#btn-look-3d.is-open {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.view3d-canvas-host.look-open .view3d-pier-panel {
+  left: auto;
+  right: 0.75rem;
+  top: auto;
+  bottom: 0.75rem;
+}
+
 .pier-controls-section { margin-top: 0.85rem; }
 .pier-controls-help { margin: 0 0 0.55rem; line-height: 1.35; }
 .pier-fields {

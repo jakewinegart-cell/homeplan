@@ -276,9 +276,12 @@
           ] },
         { id: 'G28', prompt: 'Primary cladding for the addition / changed exterior?', answer_type: 'single', required: true, driver3d: 'texture',
           options: [
-            { id: 'match_b', label: 'Match Stage B material' }, { id: 'fiber', label: 'Fiber cement' },
+            { id: 'match_b', label: 'Match Stage B material' },
+            { id: 'wood', label: 'Wood siding / clapboard' },
+            { id: 'fiber', label: 'Fiber cement' },
             { id: 'vinyl', label: 'Vinyl' }, { id: 'eng_wood', label: 'Engineered wood' },
-            { id: 'brick', label: 'Brick veneer' }, { id: 'stucco', label: 'Stucco' },
+            { id: 'brick', label: 'Brick veneer' }, { id: 'stone', label: 'Stone veneer' },
+            { id: 'stucco', label: 'Stucco' },
             { id: 'other', label: 'Other / not sure' },
           ] },
         { id: 'G29', prompt: 'Housewrap / weather-resistive barrier awareness', answer_type: 'single', required: true,
@@ -711,6 +714,14 @@
     if (!S(a, 'F25')) defaultsUsed.push('roofing_texture');
     if (roofing === 'match' || roofing === 'unsure') roofing = 'asphalt';
 
+    // Look panel color override — tints cladding albedo; Natural / unset keeps preset hex.
+    let cladding_hex = null;
+    const colorId = S(a, 'cladding_color');
+    if (colorId && colorId !== 'natural') {
+      const raw = typeof a.cladding_hex === 'string' ? a.cladding_hex.trim() : '';
+      if (/^#[0-9A-Fa-f]{6}$/.test(raw)) cladding_hex = raw;
+    }
+
     const showRoof = !remodel || ['yes', 'unsure'].includes(S(a, 'F0')) || isAdditionish(a);
     // Show foundation massing for additions, or whenever E21 is set (Plan Foundation control)
     const showFoundation = !remodel || !!S(a, 'E21') || isAdditionish(a);
@@ -749,6 +760,8 @@
       roof_style,
       eave_overhang_in,
       cladding_texture: cladding,
+      cladding_hex,
+      cladding_color: colorId || null,
       roofing_texture: roofing,
       show_roof: showRoof,
       show_foundation: showFoundation,
@@ -832,7 +845,7 @@
     if (S(a, 'D19') === 'yes' || ['yes', 'maybe'].includes(S(a, 'D16'))) {
       cuts.push({ id: 'opening', if_present: 'Large opening / beam', suggestion: 'Keep only if essential; flag must_hire_pro' });
     }
-    if (['brick', 'stone'].includes(S(a, 'B7')) || S(a, 'G28') === 'brick') {
+    if (['brick', 'stone'].includes(S(a, 'B7')) || ['brick', 'stone'].includes(S(a, 'G28'))) {
       cuts.push({ id: 'cladding', if_present: 'Brick/stone cladding', suggestion: 'Fiber cement or vinyl EXAMPLE tier' });
     }
     if (hasWetRooms(a) && hasAny(a, 'A3', ['bathroom']) && hasAny(a, 'A3', ['kitchen'])) {
@@ -878,7 +891,7 @@
     const wet = hasWetRooms(a);
     const store = build3DStore(a);
     const wins = store.window_count;
-    const masonry = ['brick', 'stone'].includes(S(a, 'B7')) || S(a, 'G28') === 'brick';
+    const masonry = ['brick', 'stone'].includes(S(a, 'B7')) || ['brick', 'stone'].includes(S(a, 'G28'));
     const includeLabor = S(a, 'K43') !== 'materials';
     let contingencyPct = 15;
     if (S(a, 'K44') === '10') contingencyPct = 10;

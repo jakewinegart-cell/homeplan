@@ -13,6 +13,9 @@
  * Realism2: richer procedural albedo+bump (clapboard/brick/shingles), lumber grain,
  * foundation/ground maps, fascia/soffit eave edge, stronger late-morning sun + soft
  * fill + interior bounce, cleaner soft shadows. Still conceptual — not photoreal CAD.
+ *
+ * Look1: optional store.cladding_hex tints the cladding preset albedo (pattern stays).
+ * Guidance G28 / F25 / roof style remain the drivers; hex is an appearance override.
  */
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -727,10 +730,12 @@ function createView3D(container) {
     return tex;
   }
 
-  function cladMaterial(key) {
+  function cladMaterial(key, hexOverride) {
     const p = CLAD_PRESETS[key] || CLAD_PRESETS.mixed;
+    const hex = (typeof hexOverride === 'string' && /^#[0-9A-Fa-f]{6}$/.test(hexOverride))
+      ? hexOverride : p.hex;
     const coursePx = p.pattern === 'noise' ? 64 : Math.max(8, Math.round(256 * (p.courseM / 1.2)));
-    const map = makePatternTexture(p.pattern, p.hex, coursePx, { size: 512 });
+    const map = makePatternTexture(p.pattern, hex, coursePx, { size: 512 });
     const bump = makeBumpTexture(p.pattern, coursePx, { size: 256 });
     const ru = p.pattern === 'noise' ? 0.32 : (p.pattern === 'brick' ? 1.15 : 0.95);
     map.repeat.set(ru, ru);
@@ -2664,7 +2669,7 @@ function createView3D(container) {
     const lowSlope = pitch <= (2 / 12) || store.roof_tie_in === 'flat' || store.roof_tie_in === 'low-slope';
 
     // §2 + realism2 materials from Guidance answers (procedural albedo + bump)
-    const wallMat = cladMaterial(cladKey);
+    const wallMat = cladMaterial(cladKey, store.cladding_hex);
     const lumberMat = lumberMaterial();
     const roofMat = roofMaterial(roofKey, { lowSlope });
     const floorMat = floorMaterial('wood');

@@ -150,11 +150,14 @@
       ensure3D();
       rebuild3D(true);
       pierPanelDismissed = false;
+      if (typeof syncLookPanel === 'function') syncLookPanel();
     }
     if (name === 'materials') renderMaterials();
     if (name === 'walkthrough') renderWalkthrough();
     if (typeof refreshPierPanelVisibility === 'function') refreshPierPanelVisibility();
   }
+
+  let lookCamLock = false;
 
   function schedule3DRebuild() {
     if (suppressing3dRebuild) {
@@ -163,9 +166,10 @@
     }
     planDirtyFor3d = true;
     clearTimeout(rebuild3dTimer);
+    const keepCam = lookCamLock;
     rebuild3dTimer = setTimeout(() => {
       if (els.views.view3d && els.views.view3d.classList.contains('active')) {
-        rebuild3D(true);
+        rebuild3D(true, { preserveCamera: keepCam });
       }
     }, 280);
   }
@@ -219,14 +223,15 @@
     }
   }
 
-  function rebuild3D(force) {
+  function rebuild3D(force, opts) {
     ensure3D();
     if (!view3d) return;
     if (!force && !planDirtyFor3d) return;
     const prevSel = view3d.getSelectedWindowId ? view3d.getSelectedWindowId() : null;
     const plan = floor ? floor.exportData() : { walls: [], rooms: [], windows: [], rooflines: [] };
     const store = G() ? G().build3DStore(qaAnswers) : {};
-    view3d.buildFromPlan(plan, store, { preserveCamera: !!prevSel });
+    const keepCam = !!(opts && opts.preserveCamera) || !!prevSel;
+    view3d.buildFromPlan(plan, store, { preserveCamera: keepCam });
     view3d.show();
     if (prevSel && view3d.selectWindow) view3d.selectWindow(prevSel, { silent: true });
     // Keep 3D add-palette defaults in sync with Guidance D18b presets
@@ -765,6 +770,251 @@
     });
   }
 
+  // ---- Look / appearance (look1) — writes Guidance answers, 3D rebuilds ----
+  const LOOK_CLADDING = [
+    { id: 'wood', label: 'Wood' },
+    { id: 'fiber', label: 'Fiber cement' },
+    { id: 'vinyl', label: 'Vinyl' },
+    { id: 'brick', label: 'Brick' },
+    { id: 'stone', label: 'Stone' },
+  ];
+  const LOOK_ROOFING = [
+    { id: 'asphalt', label: 'Asphalt' },
+    { id: 'metal', label: 'Metal' },
+    { id: 'tile', label: 'Tile' },
+    { id: 'slate', label: 'Slate' },
+  ];
+  const LOOK_STYLE = [
+    { id: 'gable', label: 'Gable' },
+    { id: 'hip', label: 'Hip' },
+  ];
+  const LOOK_COLORS = [
+    { id: 'natural', label: 'Natural', hex: null },
+    { id: 'white', label: 'White', hex: '#F4F1EA' },
+    { id: 'warm_gray', label: 'Warm gray', hex: '#C4BEB4' },
+    { id: 'sage', label: 'Sage', hex: '#7F9276' },
+    { id: 'navy', label: 'Navy', hex: '#3D4E63' },
+    { id: 'clay', label: 'Clay', hex: '#C56B4E' },
+    { id: 'charcoal', label: 'Charcoal', hex: '#3C3B38' },
+  ];
+
+  function currentLookCladding() {
+    let g = qaAnswers.G28;
+    if (!g || g === 'match_b') g = qaAnswers.B7 || 'fiber';
+    if (g === 'other') return null;
+    return LOOK_CLADDING.some((c) => c.id === g) ? g : null;
+  }
+
+  function currentLookRoofing() {
+    let r = qaAnswers.F25 || 'asphalt';
+    if (r === 'match' || r === 'unsure') r = 'asphalt';
+    return LOOK_ROOFING.some((c) => c.id === r) ? r : 'asphalt';
+  }
+
+  function currentLookStyle() {
+    const planStyle = floor && floor.getRoof ? floor.getRoof().roofStyle : null;
+    let s = planStyle || qaAnswers.F24style || qaAnswers.roof_style || 'gable';
+    if (s === 'unsure' || s !== 'hip') s = 'gable';
+    return s;
+  }
+
+  function currentLookColor() {
+    const id = qaAnswers.cladding_color || 'natural';
+    return LOOK_COLORS.some((c) => c.id === id) ? id : 'natural';
+  }
+
+  function lookPanelOpen() {
+    const panel = document.getElementById('view3d-look-panel');
+    return !!(panel && !panel.hidden);
+  }
+
+  function syncLookPanel() {
+    const clad = currentLookCladding();
+    const roof = currentLookRoofing();
+    const style = currentLookStyle();
+    const color = currentLookColor();
+    document.querySelectorAll('#look-cladding-chips .look-chip').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.clad === clad);
+      btn.setAttribute('aria-pressed', btn.dataset.clad === clad ? 'true' : 'false');
+    });
+    document.querySelectorAll('#look-roofing-chips .look-chip').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.roof === roof);
+      btn.setAttribute('aria-pressed', btn.dataset.roof === roof ? 'true' : 'false');
+    });
+    document.querySelectorAll('#look-style-chips .look-chip').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.style === style);
+      btn.setAttribute('aria-pressed', btn.dataset.style === style ? 'true' : 'false');
+    });
+    document.querySelectorAll('#look-color-chips .look-swatch-wrap').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.color === color);
+      btn.setAttribute('aria-pressed', btn.dataset.color === color ? 'true' : 'false');
+    });
+    const open = lookPanelOpen();
+    const b3 = document.getElementById('btn-look-3d');
+    const bPlan = document.getElementById('btn-look');
+    if (b3) b3.classList.toggle('is-open', open);
+    if (bPlan) bPlan.classList.toggle('active', open);
+    const host = document.getElementById('view3d-canvas-host');
+    if (host) host.classList.toggle('look-open', open);
+  }
+
+  let lookRevealedFinish = false;
+
+  /** Finished siding is the Studs-off shell. Reveal it once so Look edits are visible. */
+  function revealFinishForLook() {
+    if (lookRevealedFinish) return;
+    if (!view3d || !view3d.setShowStuds) return;
+    lookRevealedFinish = true;
+    const tog = document.getElementById('view3d-studs-toggle');
+    if (tog && tog.checked) {
+      view3d.setShowStuds(false);
+      showToast('Studs off so siding shows · turn Studs on for framing');
+    }
+  }
+
+  function openLookPanel() {
+    tipDismissed = true;
+    if (els.emptyTip) els.emptyTip.classList.add('hidden');
+    const panel = document.getElementById('view3d-look-panel');
+    if (panel) panel.hidden = false;
+    if (!els.views.view3d || !els.views.view3d.classList.contains('active')) {
+      switchView('view3d');
+    }
+    revealFinishForLook();
+    syncLookPanel();
+  }
+
+  function closeLookPanel() {
+    const panel = document.getElementById('view3d-look-panel');
+    if (panel) panel.hidden = true;
+    syncLookPanel();
+  }
+
+  function applyLook(patch) {
+    const wiz = window.HomePlanWizard;
+    const apply = (id, v) => {
+      if (wiz && wiz.applyFieldToAnswers) wiz.applyFieldToAnswers(qaAnswers, id, v);
+      else qaAnswers[id] = v;
+    };
+    lookCamLock = true;
+    clearTimeout(applyLook._unlock);
+    applyLook._unlock = setTimeout(() => { lookCamLock = false; }, 500);
+    let toast = '';
+    if (patch.cladding) {
+      apply('cladding', patch.cladding);
+      const lab = (LOOK_CLADDING.find((c) => c.id === patch.cladding) || {}).label || patch.cladding;
+      toast = 'Cladding · ' + lab;
+    }
+    if (patch.roofing) {
+      apply('roofing', patch.roofing);
+      const lab = (LOOK_ROOFING.find((c) => c.id === patch.roofing) || {}).label || patch.roofing;
+      toast = 'Roofing · ' + lab;
+    }
+    if (patch.style) {
+      const style = patch.style === 'hip' ? 'hip' : 'gable';
+      apply('roof_style', style);
+      if (qaAnswers.F0 == null || qaAnswers.F0 === 'no') qaAnswers.F0 = 'yes';
+      if (floor && floor.setRoof) {
+        const cur = floor.getRoof ? floor.getRoof() : {};
+        let pitch = cur.roofPitch;
+        let label = cur.roofPitchLabel || null;
+        if (pitch == null && G()) {
+          const store = G().build3DStore(qaAnswers);
+          pitch = store.roof_pitch;
+        }
+        floor.setRoof({ pitch: pitch, pitchLabel: label, style: style });
+      }
+      toast = 'Roof style · ' + (style === 'hip' ? 'Hip' : 'Gable');
+    }
+    if (patch.color) {
+      const c = LOOK_COLORS.find((x) => x.id === patch.color) || LOOK_COLORS[0];
+      apply('cladding_color', c.id);
+      apply('cladding_hex', c.hex || '');
+      toast = 'Siding color · ' + c.label;
+    }
+    syncLookPanel();
+    try { renderQA(); } catch (e) { /* Guidance not ready */ }
+    try { renderRecs(); } catch (e) { /* ignore */ }
+    try { renderMaterials(); } catch (e) { /* ignore */ }
+    schedule3DRebuild();
+    if (els.views.view3d && els.views.view3d.classList.contains('active')) {
+      rebuild3D(true, { preserveCamera: true });
+    }
+    walkthroughDirty = true;
+    if (els.saveStatus) els.saveStatus.textContent = 'Unsaved changes — click Save to keep them.';
+    if (toast) showToast(toast + ' · EXAMPLE');
+  }
+
+  function initLookPanel() {
+    const cladHost = document.getElementById('look-cladding-chips');
+    const roofHost = document.getElementById('look-roofing-chips');
+    const styleHost = document.getElementById('look-style-chips');
+    const colorHost = document.getElementById('look-color-chips');
+    if (cladHost) {
+      LOOK_CLADDING.forEach((c) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'look-chip';
+        btn.dataset.clad = c.id;
+        btn.textContent = c.label;
+        btn.addEventListener('click', () => applyLook({ cladding: c.id }));
+        cladHost.appendChild(btn);
+      });
+    }
+    if (roofHost) {
+      LOOK_ROOFING.forEach((c) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'look-chip';
+        btn.dataset.roof = c.id;
+        btn.textContent = c.label;
+        btn.addEventListener('click', () => applyLook({ roofing: c.id }));
+        roofHost.appendChild(btn);
+      });
+    }
+    if (styleHost) {
+      LOOK_STYLE.forEach((c) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'look-chip';
+        btn.dataset.style = c.id;
+        btn.textContent = c.label;
+        btn.addEventListener('click', () => applyLook({ style: c.id }));
+        styleHost.appendChild(btn);
+      });
+    }
+    if (colorHost) {
+      LOOK_COLORS.forEach((c) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'look-swatch-wrap';
+        btn.dataset.color = c.id;
+        btn.title = c.label + (c.hex ? ' ' + c.hex : ' (preset albedo)');
+        const sw = document.createElement('span');
+        sw.className = 'look-swatch' + (c.hex ? '' : ' is-natural');
+        if (c.hex) sw.style.background = c.hex;
+        sw.setAttribute('aria-hidden', 'true');
+        const lab = document.createElement('span');
+        lab.textContent = c.label;
+        btn.appendChild(sw);
+        btn.appendChild(lab);
+        btn.addEventListener('click', () => applyLook({ color: c.id }));
+        colorHost.appendChild(btn);
+      });
+    }
+    const openers = [document.getElementById('btn-look'), document.getElementById('btn-look-3d')];
+    openers.forEach((btn) => {
+      if (!btn) return;
+      btn.addEventListener('click', () => {
+        if (lookPanelOpen() && els.views.view3d && els.views.view3d.classList.contains('active')) closeLookPanel();
+        else openLookPanel();
+      });
+    });
+    const closeBtn = document.getElementById('v3d-look-close');
+    if (closeBtn) closeBtn.addEventListener('click', closeLookPanel);
+    syncLookPanel();
+  }
+
   // ---- Foundation type picker (E21 / piers / sonotubes) ----
   const FOUNDATION_LABELS = {
     slab: 'Slab',
@@ -1295,6 +1545,7 @@
     updateBareBonesOffer();
     renderMaterials();
     refreshFoundationChrome();
+    if (typeof syncLookPanel === 'function') syncLookPanel();
     schedule3DRebuild();
     walkthroughDirty = true;
   }
@@ -2282,6 +2533,7 @@
     initWallHeightModal();
     initExistingHouseModal();
     initRoofPicker();
+    initLookPanel();
     initFoundationPicker();
     initWalkthrough();
     initQA();
@@ -2297,6 +2549,7 @@
     try3d();
 
     const restored = loadProject();
+    syncLookPanel();
     if (restored) showToast('Restored saved project');
     refreshExistingHouseChrome();
     refreshFoundationChrome();
