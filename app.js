@@ -1,5 +1,5 @@
 /**
- * HomePlan app shell — Guidance A–K, Materials, 3D, Save/Share
+ * HomePlan app shell — Guidance A–K, Materials, 3D, Save/Share (share1 view-only mock)
  * REMODEL_GUIDE_HOOK: /workspace/remodel-app-content-v1.md via guide-data.js
  * BARE_BONES: /workspace/remodel-app-small-budget-v1.md (budget_mode standard|bare_bones)
  */
@@ -1542,9 +1542,15 @@
   }
 
   function openShareModal() {
-    const slug = (els.projectName.value || 'demo').toLowerCase().replace(/[^\w]+/g, '-').slice(0, 32);
-    els.shareLink.value = 'https://homeplan.example/share/' + slug;
+    // EXAMPLE placeholder only — not a live guest join URL
+    const slug = (els.projectName.value || 'demo').toLowerCase().replace(/[^\w]+/g, '-').slice(0, 32) || 'demo';
+    let origin = 'https://homeplan.example';
+    try { origin = window.location.origin || origin; } catch (_) { /* ignore */ }
+    const path = (window.location.pathname || '/').replace(/\/[^/]*$/, '/') || '/';
+    els.shareLink.value = origin + path + 'index.html?p=' + encodeURIComponent(slug) + '&k=view';
     els.shareModal.hidden = false;
+    const copyBtn = document.getElementById('btn-copy-link');
+    if (copyBtn) copyBtn.focus();
   }
 
   function initProject() {
@@ -1561,12 +1567,19 @@
     document.getElementById('btn-copy-link').addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(els.shareLink.value);
-        showToast('Fake link copied');
+        showToast('EXAMPLE link copied · not live');
       } catch (_) {
         els.shareLink.select();
-        showToast('Select & copy the link');
+        showToast('Select & copy the EXAMPLE link');
       }
     });
+    const revokeBtn = document.getElementById('btn-revoke-share');
+    if (revokeBtn) {
+      revokeBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        showToast('Revoke · Coming soon');
+      });
+    }
     els.shareModal.querySelectorAll('[data-close-modal]').forEach((el) => {
       el.addEventListener('click', () => { els.shareModal.hidden = true; });
     });

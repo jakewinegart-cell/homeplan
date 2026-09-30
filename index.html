@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>HomePlan — Remodel & Additions</title>
-  <link rel="stylesheet" href="styles.css?v=budget1" />
+  <link rel="stylesheet" href="styles.css?v=share1" />
 </head>
 <body>
   <div id="app">
@@ -410,7 +410,7 @@
         <div class="panel-page narrow">
           <header class="panel-header">
             <h1>Project</h1>
-            <p class="lede">Save stays in this browser. Share is a prototype stub.</p>
+            <p class="lede">Save stays in this browser. Share is a <span class="example-tag">EXAMPLE</span> view-only mock — live watch coming next.</p>
           </header>
           <div class="project-card">
             <label class="field">
@@ -429,21 +429,67 @@
     </main>
   </div>
 
-  <!-- Share modal stub -->
+  <!-- Share panel mock (share1 · view-only MVP — not live sync) -->
   <div id="share-modal" class="modal" hidden>
     <div class="modal-backdrop" data-close-modal></div>
-    <div class="modal-card" role="dialog" aria-labelledby="share-title">
-      <h2 id="share-title">Share project</h2>
-      <p class="muted">Prototype stub — no real hosting yet.</p>
-      <label class="field">
-        Fake share link
-        <div class="input-row">
-          <input type="text" id="share-link" readonly value="https://homeplan.example/share/demo-project" />
-          <button type="button" class="btn btn-ghost btn-sm" id="btn-copy-link">Copy</button>
+    <div class="modal-card share-card" role="dialog" aria-labelledby="share-title" aria-describedby="share-live-note">
+      <div class="share-card-header">
+        <div>
+          <h2 id="share-title">Share project</h2>
+          <p class="muted small share-subtitle">Invite to watch <span class="example-tag">EXAMPLE · not live</span></p>
         </div>
-      </label>
-      <div class="btn-row">
-        <button type="button" class="btn btn-accent" id="btn-download-share">Export JSON</button>
+        <button type="button" class="btn btn-ghost btn-sm share-close" data-close-modal aria-label="Close">✕</button>
+      </div>
+
+      <div class="example-banner share-example-banner" id="share-example-banner">
+        <strong>EXAMPLE</strong> — link &amp; presence are UI mocks only. No cloud sync yet.
+      </div>
+
+      <fieldset class="share-role-fieldset">
+        <legend class="share-section-label">Role</legend>
+        <div class="share-role-row" role="radiogroup" aria-label="Share role">
+          <label class="share-role-option is-selected">
+            <input type="radio" name="share-role" value="view" checked />
+            <span class="share-role-title">View only</span>
+            <span class="share-role-hint">Watch the plan (mock)</span>
+          </label>
+          <label class="share-role-option is-disabled" aria-disabled="true" title="Coming soon">
+            <input type="radio" name="share-role" value="edit" disabled />
+            <span class="share-role-title">Edit <span class="share-soon">Coming soon</span></span>
+            <span class="share-role-hint">Collaborate later</span>
+          </label>
+        </div>
+      </fieldset>
+
+      <div class="share-link-block">
+        <div class="share-section-label">Anyone with the link</div>
+        <label class="field share-link-field">
+          <span class="sr-only">Example share link</span>
+          <div class="input-row">
+            <input type="text" id="share-link" readonly value="" aria-describedby="share-link-hint" />
+            <button type="button" class="btn btn-accent btn-sm" id="btn-copy-link">Copy link</button>
+          </div>
+        </label>
+        <p class="muted small" id="share-link-hint">Placeholder URL shaped like this origin + <code>?p=demo&amp;k=view</code> — <strong>EXAMPLE / not live</strong>.</p>
+        <button type="button" class="btn btn-ghost btn-sm share-revoke" id="btn-revoke-share" disabled title="Coming soon">Revoke link · Coming soon</button>
+      </div>
+
+      <div class="share-presence">
+        <div class="share-section-label">Watching now</div>
+        <div class="share-presence-chips" aria-label="Presence (not connected)">
+          <span class="share-presence-chip is-you is-offline" title="Not connected">You</span>
+          <span class="share-presence-chip is-guest is-offline" title="Not connected">Guest</span>
+        </div>
+        <p class="muted small share-presence-note">Presence chips are grayed — not connected.</p>
+      </div>
+
+      <p class="share-live-note" id="share-live-note">
+        <strong>Live watch needs cloud sign-in — coming next.</strong>
+        Until then, use FaceTime, Zoom, or Google Meet screen share so they can watch your screen.
+      </p>
+
+      <div class="btn-row share-actions">
+        <button type="button" class="btn btn-ghost" id="btn-download-share">Export JSON</button>
         <button type="button" class="btn btn-ghost" data-close-modal>Close</button>
       </div>
     </div>
@@ -609,11 +655,11 @@
     }
   }
   </script>
-  <script src="walkthrough-data.js?v=budget1"></script>
-  <script src="guide-data.js?v=budget1"></script>
-  <script src="floorplan.js?v=budget1"></script>
-  <script src="wizard-data.js?v=budget1"></script>
-  <script type="module" src="view3d.js?v=budget1"></script>
-  <script src="app.js?v=budget1"></script>
+  <script src="walkthrough-data.js?v=share1"></script>
+  <script src="guide-data.js?v=share1"></script>
+  <script src="floorplan.js?v=share1"></script>
+  <script src="wizard-data.js?v=share1"></script>
+  <script type="module" src="view3d.js?v=share1"></script>
+  <script src="app.js?v=share1"></script>
 </body>
 </html>
