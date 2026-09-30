@@ -7,7 +7,12 @@
  * educational overlay — finished look when Studs OFF.
  * Interior P0: warm ceiling/room fills, painted finish + baseboard/ceiling/floor
  * when Studs OFF, fixture face polish (cabinets/sink/outlets).
- * Floor framing ON: omit opaque finish deck so floor trusses read from above (and below).
+ * Floor framing ON: omit opaque finish deck so open-web floor trusses (~10 in labeled,
+* visual ~13 in) read from interior low/across — not flat top-chord planks.
+ *
+ * Realism2: richer procedural albedo+bump (clapboard/brick/shingles), lumber grain,
+ * foundation/ground maps, fascia/soffit eave edge, stronger late-morning sun + soft
+ * fill + interior bounce, cleaner soft shadows. Still conceptual — not photoreal CAD.
  */
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -51,12 +56,12 @@ const PAINT_LINER_T = 0.035; // thin interior paint face
 const CEILING_T = 0.08;
 const MAX_INTERIOR_LIGHTS = 3;
 /** Conceptual floor trusses / joists — EXAMPLE spacing only (not engineering). */
-const FLOOR_JOIST_OC = 20 / 12; // ~20 in o.c. (EXAMPLE within 16–24 in)
-const FLOOR_TRUSS_H = 10 / 12; // ~10 in overall depth (readable from orbit)
-const FLOOR_TRUSS_CHORD_T = 1.75 / 12; // ~1.75 in top/bottom chord thickness
-const FLOOR_TRUSS_CHORD_W = 3.5 / 12; // ~3.5 in chord face width
-const FLOOR_TRUSS_WEB_T = 1.5 / 12; // ~1.5 in diagonal/vertical web thickness
-const FLOOR_TRUSS_BAY = 1.5; // ~1.5 ft panels — steeper webs so depth reads on a ~10 in truss
+const FLOOR_JOIST_OC = 24 / 12; // ~24 in o.c. — wider gaps so webs read from interior glance
+const FLOOR_TRUSS_H = 13 / 12; // ~13 in visual depth (labeled ~10 in; readability from interior)
+const FLOOR_TRUSS_CHORD_T = 2.25 / 12; // ~2.25 in chord thickness — side edge reads at glance
+const FLOOR_TRUSS_CHORD_W = 4.5 / 12; // ~4.5 in chord face width
+const FLOOR_TRUSS_WEB_T = 2 / 12; // ~2 in diagonal/vertical web thickness
+const FLOOR_TRUSS_BAY = 1.15; // ~1.15 ft panels — steeper open webs, clearer zigzag
 /** @deprecated alias — foundation pad clearance still keyed off truss height */
 const FLOOR_IBEAM_H = FLOOR_TRUSS_H;
 
@@ -178,8 +183,8 @@ function createView3D(container) {
   function ensure() {
     if (renderer) return;
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xd8e2ec); // cool late-morning sky feel
-    scene.fog = new THREE.Fog(0xd8e2ec, 120, 280);
+    scene.background = new THREE.Color(0xd2deea); // cool late-morning sky (slightly deeper than flat wash)
+    scene.fog = new THREE.Fog(0xd2deea, 140, 300);
 
     camera = new THREE.PerspectiveCamera(45, 1, 0.1, 600);
     camera.position.set(32, 24, 32);
@@ -189,7 +194,7 @@ function createView3D(container) {
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.0;
+    renderer.toneMappingExposure = 1.05;
     canvasHost.appendChild(renderer.domElement);
 
     controls = new OrbitControls(camera, renderer.domElement);
@@ -200,42 +205,43 @@ function createView3D(container) {
     controls.maxDistance = 140;
     controls.target.set(0, 4, 0);
 
-    // §3 late-morning: cool sky / warm ground ambient + warm sun (1 shadow caster)
-    // + stronger warm interior fills (placed per-room in buildFromPlan; no shadows)
-    hemiLight = new THREE.HemisphereLight(0xc8d6e8, 0x7a7268, 0.48);
+    // Realism2 late-morning: warm key sun + softer cool sky fill + warm interior bounce
+    // One shadow caster only (phone-safe). Soft PCF; bias tuned for wall/roof contact.
+    hemiLight = new THREE.HemisphereLight(0xc5d4e8, 0x6e675c, 0.55);
     scene.add(hemiLight);
-    sunLight = new THREE.DirectionalLight(0xfff1d6, 0.92);
-    // Azimuth ~135° from front, elevation ~50°
-    sunLight.position.set(38, 48, 28);
+    sunLight = new THREE.DirectionalLight(0xffefd2, 1.05);
+    // Azimuth ~135° from front, elevation ~48° — readable form, short soft shadows
+    sunLight.position.set(42, 46, 30);
     sunLight.castShadow = true;
-    sunLight.shadow.mapSize.set(1024, 1024);
-    sunLight.shadow.bias = -0.00025;
-    sunLight.shadow.normalBias = 0.03;
+    sunLight.shadow.mapSize.set(1536, 1536);
+    sunLight.shadow.bias = -0.00018;
+    sunLight.shadow.normalBias = 0.035;
+    sunLight.shadow.radius = 2.2; // softer penumbra when PCFSoft supported
     sunLight.shadow.camera.near = 2;
-    sunLight.shadow.camera.far = 160;
-    sunLight.shadow.camera.left = -50;
-    sunLight.shadow.camera.right = 50;
-    sunLight.shadow.camera.top = 50;
-    sunLight.shadow.camera.bottom = -50;
+    sunLight.shadow.camera.far = 170;
+    sunLight.shadow.camera.left = -55;
+    sunLight.shadow.camera.right = 55;
+    sunLight.shadow.camera.top = 55;
+    sunLight.shadow.camera.bottom = -55;
     scene.add(sunLight);
-    fillLight = new THREE.DirectionalLight(0xb8c8d8, 0.1); // weak opposite rim
-    fillLight.position.set(-30, 18, -22);
+    fillLight = new THREE.DirectionalLight(0xb4c6da, 0.18); // softer opposite sky fill
+    fillLight.position.set(-32, 22, -26);
     scene.add(fillLight);
-    interiorFill = new THREE.PointLight(0xfff4e8, 2.4, 48, 1.5);
+    interiorFill = new THREE.PointLight(0xfff2e4, 2.6, 52, 1.45);
     interiorFill.position.set(0, 6.5, 0);
     interiorFill.castShadow = false;
     scene.add(interiorFill);
     interiorLights = [];
     for (let i = 0; i < MAX_INTERIOR_LIGHTS - 1; i++) {
-      const pl = new THREE.PointLight(0xfff0dc, 0.0, 32, 1.5);
+      const pl = new THREE.PointLight(0xffebd4, 0.0, 34, 1.45);
       pl.castShadow = false;
       pl.visible = false;
       scene.add(pl);
       interiorLights.push(pl);
     }
-    ambientWarm = new THREE.AmbientLight(0xfff0e4, 0.18);
+    ambientWarm = new THREE.AmbientLight(0xffefe2, 0.22); // gentle bounce so interiors aren't caves
     scene.add(ambientWarm);
-    renderer.toneMappingExposure = 1.0; // avoid blown whites with stronger interior fills
+    renderer.toneMappingExposure = 1.05;
 
     raycaster = new THREE.Raycaster();
     pointer = new THREE.Vector2();
@@ -376,6 +382,9 @@ function createView3D(container) {
           if (Array.isArray(o.material)) o.material.forEach((m) => m.dispose());
           else {
             if (o.material.map) o.material.map.dispose();
+            if (o.material.bumpMap) o.material.bumpMap.dispose();
+            if (o.material.roughnessMap) o.material.roughnessMap.dispose();
+            if (o.material.normalMap) o.material.normalMap.dispose();
             o.material.dispose();
           }
         }
@@ -399,8 +408,8 @@ function createView3D(container) {
   }
 
   /** Procedural canvas albedo for named material presets (no external image assets). */
-  function makePatternTexture(pattern, baseHex, coursePx) {
-    const size = 256;
+  function makePatternTexture(pattern, baseHex, coursePx, opts) {
+    const size = (opts && opts.size) || 512;
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
@@ -408,97 +417,214 @@ function createView3D(container) {
     const base = baseHex || '#C8C4BC';
     ctx.fillStyle = base;
     ctx.fillRect(0, 0, size, size);
-    const course = Math.max(4, Math.round(coursePx || 24));
+    const course = Math.max(6, Math.round((coursePx || 28) * (size / 256)));
+
+    function shadeHex(hex, amt) {
+      const c = new THREE.Color(hex);
+      c.offsetHSL(0, 0, amt);
+      return '#' + c.getHexString();
+    }
 
     if (pattern === 'clapboard') {
+      // Clear horizontal courses with bevel highlight + deep shadow line (reads at orbit)
       for (let y = 0; y < size; y += course) {
-        ctx.fillStyle = 'rgba(0,0,0,0.10)';
-        ctx.fillRect(0, y + course - 2, size, 2);
-        ctx.fillStyle = 'rgba(255,255,255,0.08)';
-        ctx.fillRect(0, y, size, 1);
+        const band = shadeHex(base, ((y / course) % 3 === 0) ? 0.025 : (((y / course) % 3 === 1) ? -0.02 : 0.01));
+        ctx.fillStyle = band;
+        ctx.fillRect(0, y, size, course);
+        // soft top highlight (bevel)
+        const g = ctx.createLinearGradient(0, y, 0, y + Math.max(3, course * 0.35));
+        g.addColorStop(0, 'rgba(255,255,255,0.22)');
+        g.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, y, size, Math.max(3, course * 0.35));
+        // deep course shadow line
+        ctx.fillStyle = 'rgba(30,22,12,0.42)';
+        ctx.fillRect(0, y + course - 3, size, 3);
+        ctx.fillStyle = 'rgba(255,255,255,0.12)';
+        ctx.fillRect(0, y + course - 4, size, 1);
+        // subtle vertical board joints
+        for (let x = ((y / course) % 2) * 48; x < size; x += 96) {
+          ctx.fillStyle = 'rgba(40,30,20,0.08)';
+          ctx.fillRect(x, y, 1, course - 3);
+        }
       }
     } else if (pattern === 'brick') {
-      ctx.fillStyle = '#D8D2C8'; // mortar field
+      ctx.fillStyle = '#D4CEC4'; // mortar field
       ctx.fillRect(0, 0, size, size);
-      const bh = Math.max(10, Math.round(course));
-      const bw = Math.round(bh * 2.6);
+      const bh = Math.max(14, Math.round(course));
+      const bw = Math.round(bh * 2.85);
+      const mortar = 3;
       for (let row = 0, y = 0; y < size; y += bh, row++) {
         const off = (row % 2) ? bw / 2 : 0;
         for (let x = -bw; x < size + bw; x += bw) {
-          const shade = 1 - ((x + y * 3) % 5) * 0.04;
-          ctx.fillStyle = base;
-          ctx.globalAlpha = shade;
-          ctx.fillRect(x + off + 2, y + 2, bw - 4, bh - 4);
-          ctx.globalAlpha = 1;
-          ctx.strokeStyle = 'rgba(40,30,25,0.35)';
+          const n = ((x * 13 + y * 7) % 9) - 4;
+          ctx.fillStyle = shadeHex(base, n * 0.012);
+          ctx.fillRect(x + off + mortar, y + mortar, bw - mortar * 2, bh - mortar * 2);
+          // brick edge bevel
+          ctx.strokeStyle = 'rgba(255,255,255,0.14)';
           ctx.lineWidth = 1;
-          ctx.strokeRect(x + off + 1.5, y + 1.5, bw - 3, bh - 3);
+          ctx.strokeRect(x + off + mortar + 0.5, y + mortar + 0.5, bw - mortar * 2 - 1, bh - mortar * 2 - 1);
+          ctx.strokeStyle = 'rgba(40,25,18,0.35)';
+          ctx.strokeRect(x + off + mortar - 0.5, y + mortar - 0.5, bw - mortar * 2 + 1, bh - mortar * 2 + 1);
         }
       }
     } else if (pattern === 'stone') {
-      ctx.fillStyle = base;
+      ctx.fillStyle = shadeHex(base, -0.04);
       ctx.fillRect(0, 0, size, size);
-      for (let i = 0; i < 28; i++) {
+      for (let i = 0; i < 36; i++) {
         const x = (i * 73) % size, y = (i * 47) % size;
-        const w = 28 + (i % 5) * 10, h = 18 + (i % 4) * 8;
-        ctx.fillStyle = 'rgba(0,0,0,0.08)';
+        const w = 36 + (i % 5) * 14, h = 22 + (i % 4) * 10;
+        ctx.fillStyle = shadeHex(base, ((i % 5) - 2) * 0.03);
         ctx.fillRect(x, y, w, h);
-        ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-        ctx.strokeRect(x + 0.5, y + 0.5, w, h);
+        ctx.strokeStyle = 'rgba(20,18,16,0.28)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+        ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 2, y + 2, w - 4, h - 4);
       }
     } else if (pattern === 'noise') {
       const img = ctx.getImageData(0, 0, size, size);
       for (let i = 0; i < img.data.length; i += 4) {
-        const n = (Math.random() * 28) - 14;
+        const n = (Math.random() * 36) - 18;
         img.data[i] = Math.max(0, Math.min(255, img.data[i] + n));
         img.data[i + 1] = Math.max(0, Math.min(255, img.data[i + 1] + n));
         img.data[i + 2] = Math.max(0, Math.min(255, img.data[i + 2] + n));
       }
       ctx.putImageData(img, 0, 0);
     } else if (pattern === 'shingle') {
-      const th = 18, tw = 42;
-      for (let row = 0, y = 0; y < size; y += th, row++) {
+      // Asphalt tabs — courses parallel to eave; darker butt edge + slight tab variation
+      const th = Math.max(16, Math.round(size / 14));
+      const tw = Math.round(th * 2.35);
+      for (let row = 0, y = 0; y < size + th; y += th, row++) {
         const off = (row % 2) ? tw / 2 : 0;
+        const rowShade = shadeHex(base, (row % 3 === 0) ? 0.03 : (row % 3 === 1 ? -0.025 : 0));
         for (let x = -tw; x < size + tw; x += tw) {
-          ctx.fillStyle = 'rgba(0,0,0,0.18)';
-          ctx.fillRect(x + off, y + th - 2, tw - 1, 2);
-          ctx.fillStyle = 'rgba(255,255,255,0.04)';
-          ctx.fillRect(x + off + 2, y + 2, tw - 6, th - 6);
+          const tabJitter = ((x + row * 17) % 5) - 2;
+          ctx.fillStyle = shadeHex(rowShade, tabJitter * 0.012);
+          ctx.fillRect(x + off, y, tw - 1, th - 1);
+          // granule speckles
+          for (let s = 0; s < 8; s++) {
+            ctx.fillStyle = (s % 2) ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.08)';
+            ctx.fillRect(x + off + ((s * 19 + row) % (tw - 4)), y + ((s * 11) % (th - 4)), 2, 2);
+          }
+          // butt shadow (bottom of exposure)
+          ctx.fillStyle = 'rgba(0,0,0,0.38)';
+          ctx.fillRect(x + off, y + th - 3, tw - 1, 3);
+          ctx.fillStyle = 'rgba(255,255,255,0.06)';
+          ctx.fillRect(x + off + 2, y + 2, tw - 6, 2);
         }
       }
     } else if (pattern === 'rib') {
-      for (let x = 0; x < size; x += 18) {
-        ctx.fillStyle = 'rgba(255,255,255,0.18)';
-        ctx.fillRect(x, 0, 3, size);
-        ctx.fillStyle = 'rgba(0,0,0,0.12)';
-        ctx.fillRect(x + 3, 0, 2, size);
+      for (let x = 0; x < size; x += Math.round(size / 14)) {
+        const g = ctx.createLinearGradient(x, 0, x + 10, 0);
+        g.addColorStop(0, 'rgba(255,255,255,0.28)');
+        g.addColorStop(0.35, 'rgba(255,255,255,0.05)');
+        g.addColorStop(0.55, 'rgba(0,0,0,0.18)');
+        g.addColorStop(1, 'rgba(0,0,0,0.05)');
+        ctx.fillStyle = g;
+        ctx.fillRect(x, 0, 10, size);
       }
     } else if (pattern === 'tile') {
-      for (let y = 0; y < size; y += 28) {
-        for (let x = 0; x < size; x += 28) {
+      for (let y = 0; y < size; y += 36) {
+        for (let x = 0; x < size; x += 36) {
           ctx.beginPath();
-          ctx.ellipse(x + 14, y + 18, 12, 14, 0, Math.PI, 0);
-          ctx.fillStyle = 'rgba(0,0,0,0.12)';
+          ctx.ellipse(x + 18, y + 22, 15, 17, 0, Math.PI, 0);
+          ctx.fillStyle = shadeHex(base, ((x + y) % 7) * 0.008 - 0.02);
           ctx.fill();
-          ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+          ctx.strokeStyle = 'rgba(0,0,0,0.22)';
+          ctx.stroke();
+          ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+          ctx.beginPath();
+          ctx.ellipse(x + 18, y + 20, 12, 14, 0, Math.PI, 0);
           ctx.stroke();
         }
       }
     } else if (pattern === 'slate') {
-      const th = 20, tw = 36;
+      const th = 26, tw = 44;
       for (let row = 0, y = 0; y < size; y += th, row++) {
         const off = (row % 2) ? tw / 2 : 0;
         for (let x = -tw; x < size + tw; x += tw) {
-          ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-          ctx.strokeRect(x + off + 1, y + 1, tw - 2, th - 2);
+          ctx.fillStyle = shadeHex(base, (((x + y) % 5) - 2) * 0.02);
+          ctx.fillRect(x + off + 1, y + 1, tw - 3, th - 3);
+          ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+          ctx.strokeRect(x + off + 2, y + 2, tw - 5, th - 5);
+          ctx.fillStyle = 'rgba(0,0,0,0.25)';
+          ctx.fillRect(x + off + 1, y + th - 3, tw - 3, 2);
         }
       }
     } else if (pattern === 'membrane') {
-      // large soft mottling only
-      for (let i = 0; i < 12; i++) {
-        ctx.fillStyle = 'rgba(255,255,255,' + (0.02 + (i % 3) * 0.01) + ')';
+      for (let i = 0; i < 18; i++) {
+        ctx.fillStyle = 'rgba(255,255,255,' + (0.025 + (i % 3) * 0.012) + ')';
         ctx.beginPath();
-        ctx.arc((i * 61) % size, (i * 37) % size, 40 + i * 3, 0, Math.PI * 2);
+        ctx.arc((i * 61) % size, (i * 37) % size, 50 + i * 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // faint seam lines
+      for (let y = 40; y < size; y += 64) {
+        ctx.fillStyle = 'rgba(255,255,255,0.06)';
+        ctx.fillRect(0, y, size, 1);
+      }
+    } else if (pattern === 'concrete') {
+      // Cast concrete: soft mottling + faint form lines
+      const img = ctx.getImageData(0, 0, size, size);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const n = (Math.random() * 22) - 11;
+        img.data[i] = Math.max(0, Math.min(255, img.data[i] + n));
+        img.data[i + 1] = Math.max(0, Math.min(255, img.data[i + 1] + n));
+        img.data[i + 2] = Math.max(0, Math.min(255, img.data[i + 2] + n));
+      }
+      ctx.putImageData(img, 0, 0);
+      for (let x = 48; x < size; x += 96) {
+        ctx.fillStyle = 'rgba(0,0,0,0.06)';
+        ctx.fillRect(x, 0, 2, size);
+      }
+      for (let y = 64; y < size; y += 128) {
+        ctx.fillStyle = 'rgba(255,255,255,0.05)';
+        ctx.fillRect(0, y, size, 1);
+      }
+    } else if (pattern === 'lumber') {
+      // End-grain-ish plank face with long grain streaks
+      for (let x = 0; x < size; x += 64) {
+        ctx.fillStyle = shadeHex(base, ((x / 64) % 3 === 0) ? 0.04 : (((x / 64) % 3 === 1) ? -0.03 : 0.01));
+        ctx.fillRect(x, 0, 62, size);
+        ctx.fillStyle = 'rgba(60,40,18,0.22)';
+        ctx.fillRect(x + 62, 0, 2, size);
+      }
+      for (let g = 0; g < 28; g++) {
+        ctx.strokeStyle = 'rgba(70,45,20,' + (0.05 + (g % 4) * 0.025) + ')';
+        ctx.lineWidth = 1 + (g % 2);
+        ctx.beginPath();
+        const gx = 8 + (g * 19) % (size - 16);
+        ctx.moveTo(gx, 0);
+        for (let y = 0; y < size; y += 20) {
+          ctx.lineTo(gx + Math.sin((y + g) * 0.08) * 3, y);
+        }
+        ctx.stroke();
+      }
+      // occasional knot
+      for (let k = 0; k < 3; k++) {
+        const kx = 40 + k * 140, ky = 80 + k * 110;
+        ctx.fillStyle = 'rgba(90,55,25,0.35)';
+        ctx.beginPath();
+        ctx.ellipse(kx % size, ky % size, 7, 5, 0.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (pattern === 'grass') {
+      ctx.fillStyle = base;
+      ctx.fillRect(0, 0, size, size);
+      for (let i = 0; i < 2200; i++) {
+        const x = (i * 47) % size, y = (i * 91) % size;
+        ctx.fillStyle = (i % 3 === 0)
+          ? 'rgba(255,255,200,0.05)'
+          : (i % 3 === 1 ? 'rgba(20,40,10,0.10)' : 'rgba(90,120,50,0.08)');
+        ctx.fillRect(x, y, 2, 3);
+      }
+      // soft gravel patches
+      for (let i = 0; i < 40; i++) {
+        ctx.fillStyle = 'rgba(140,135,120,0.12)';
+        ctx.beginPath();
+        ctx.arc((i * 67) % size, (i * 103) % size, 6 + (i % 5), 0, Math.PI * 2);
         ctx.fill();
       }
     }
@@ -511,18 +637,98 @@ function createView3D(container) {
     return tex;
   }
 
+  /**
+   * Grayscale bump companion from the same pattern family.
+   * Cheap phone-friendly relief — not a true normal map bake.
+   */
+  function makeBumpTexture(pattern, coursePx, opts) {
+    const size = (opts && opts.size) || 256;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(0, 0, size, size);
+    const course = Math.max(4, Math.round((coursePx || 24) * (size / 256)));
+
+    if (pattern === 'clapboard') {
+      for (let y = 0; y < size; y += course) {
+        const g = ctx.createLinearGradient(0, y, 0, y + course);
+        g.addColorStop(0, '#b0b0b0');
+        g.addColorStop(0.7, '#787878');
+        g.addColorStop(0.92, '#505050');
+        g.addColorStop(1, '#404040');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, y, size, course);
+      }
+    } else if (pattern === 'brick' || pattern === 'stone' || pattern === 'slate' || pattern === 'tile') {
+      ctx.fillStyle = '#6a6a6a';
+      ctx.fillRect(0, 0, size, size);
+      const bh = Math.max(10, course);
+      const bw = Math.round(bh * (pattern === 'brick' ? 2.6 : 2.0));
+      for (let row = 0, y = 0; y < size; y += bh, row++) {
+        const off = (row % 2) ? bw / 2 : 0;
+        for (let x = -bw; x < size + bw; x += bw) {
+          ctx.fillStyle = '#9a9a9a';
+          ctx.fillRect(x + off + 2, y + 2, bw - 4, bh - 4);
+        }
+      }
+    } else if (pattern === 'shingle') {
+      const th = Math.max(12, Math.round(size / 14));
+      const tw = Math.round(th * 2.3);
+      for (let row = 0, y = 0; y < size; y += th, row++) {
+        const off = (row % 2) ? tw / 2 : 0;
+        for (let x = -tw; x < size + tw; x += tw) {
+          ctx.fillStyle = '#969696';
+          ctx.fillRect(x + off, y, tw - 1, th - 2);
+          ctx.fillStyle = '#505050';
+          ctx.fillRect(x + off, y + th - 3, tw - 1, 3);
+        }
+      }
+    } else if (pattern === 'rib') {
+      for (let x = 0; x < size; x += Math.round(size / 14)) {
+        ctx.fillStyle = '#b8b8b8';
+        ctx.fillRect(x, 0, 3, size);
+        ctx.fillStyle = '#585858';
+        ctx.fillRect(x + 3, 0, 3, size);
+      }
+    } else if (pattern === 'lumber') {
+      for (let x = 0; x < size; x += 32) {
+        ctx.fillStyle = (x / 32) % 2 ? '#8e8e8e' : '#7a7a7a';
+        ctx.fillRect(x, 0, 30, size);
+        ctx.fillStyle = '#555';
+        ctx.fillRect(x + 30, 0, 2, size);
+      }
+    } else if (pattern === 'concrete' || pattern === 'noise' || pattern === 'membrane' || pattern === 'grass') {
+      const img = ctx.getImageData(0, 0, size, size);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const n = 110 + ((Math.random() * 40) | 0);
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = n;
+      }
+      ctx.putImageData(img, 0, 0);
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.anisotropy = 2;
+    tex.needsUpdate = true;
+    return tex;
+  }
+
   function cladMaterial(key) {
     const p = CLAD_PRESETS[key] || CLAD_PRESETS.mixed;
     const coursePx = p.pattern === 'noise' ? 64 : Math.max(8, Math.round(256 * (p.courseM / 1.2)));
-    const map = makePatternTexture(p.pattern, p.hex, coursePx);
-    // UV: course height in meters ≈ courseM; texture is 1 course tall-ish → repeat by world size later via mesh if needed
-    // World UVs applyWallUVs → keep map.repeat near 1 so courses ~courseM
-    const ru = p.pattern === 'noise' ? 0.25 : (p.pattern === 'brick' ? 0.9 : 0.7);
+    const map = makePatternTexture(p.pattern, p.hex, coursePx, { size: 512 });
+    const bump = makeBumpTexture(p.pattern, coursePx, { size: 256 });
+    const ru = p.pattern === 'noise' ? 0.28 : (p.pattern === 'brick' ? 1.05 : 0.85);
     map.repeat.set(ru, ru);
+    bump.repeat.set(ru, ru);
     return new THREE.MeshStandardMaterial({
       color: new THREE.Color(p.hex),
       map,
-      roughness: p.roughness,
+      bumpMap: bump,
+      bumpScale: p.pattern === 'clapboard' ? 0.045 : (p.pattern === 'brick' || p.pattern === 'stone' ? 0.035 : 0.02),
+      roughness: Math.min(0.95, p.roughness + 0.02),
       metalness: p.metalness,
     });
   }
@@ -530,14 +736,19 @@ function createView3D(container) {
   function roofMaterial(key, opts) {
     const lowSlope = opts && opts.lowSlope;
     const p = lowSlope ? ROOF_PRESETS.membrane : (ROOF_PRESETS[key] || ROOF_PRESETS.asphalt);
-    const map = makePatternTexture(p.pattern, p.hex, p.pattern === 'membrane' ? 80 : 24);
-    map.repeat.set(p.pattern === 'membrane' ? 1.2 : (p.pattern === 'rib' ? 8 : 5), p.pattern === 'membrane' ? 1.2 : 4);
-    // Cap metalness without env map so metal roofs stay readable on phone
-    const metal = p.metalness > 0.3 ? Math.min(p.metalness, 0.4) : p.metalness;
+    const map = makePatternTexture(p.pattern, p.hex, p.pattern === 'membrane' ? 80 : 22, { size: 512 });
+    const bump = makeBumpTexture(p.pattern, p.pattern === 'membrane' ? 80 : 22, { size: 256 });
+    const ru = p.pattern === 'membrane' ? 1.4 : (p.pattern === 'rib' ? 9 : 6);
+    const rv = p.pattern === 'membrane' ? 1.4 : 5;
+    map.repeat.set(ru, rv);
+    bump.repeat.set(ru, rv);
+    const metal = p.metalness > 0.3 ? Math.min(p.metalness, 0.45) : p.metalness;
     return new THREE.MeshStandardMaterial({
       color: new THREE.Color(p.hex),
       map,
-      roughness: Math.max(p.roughness, metal > 0.2 ? 0.4 : p.roughness),
+      bumpMap: bump,
+      bumpScale: p.pattern === 'shingle' || p.pattern === 'tile' || p.pattern === 'slate' ? 0.055 : (p.pattern === 'rib' ? 0.04 : 0.015),
+      roughness: Math.max(p.roughness, metal > 0.2 ? 0.38 : p.roughness),
       metalness: metal,
       side: THREE.DoubleSide,
     });
@@ -588,10 +799,38 @@ function createView3D(container) {
     uv.needsUpdate = true;
   }
 
+  /** Roof-plane UVs: U along eave (XZ), V up-slope (uses Y + plan for tab direction). */
+  function applyRoofUVs(mesh, scale) {
+    if (!mesh || !mesh.geometry) return;
+    const geo = mesh.geometry;
+    const pos = geo.attributes.position;
+    if (!pos) return;
+    let uv = geo.attributes.uv;
+    if (!uv || uv.count !== pos.count) {
+      uv = new THREE.BufferAttribute(new Float32Array(pos.count * 2), 2);
+      geo.setAttribute('uv', uv);
+    }
+    const s = scale || 0.45;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      // Mix plan axes so both gable orientations get readable courses
+      uv.setXY(i, (x + z) * s * 0.55, (y * 0.85 + (x - z) * 0.15) * s);
+    }
+    uv.needsUpdate = true;
+    geo.computeVertexNormals();
+  }
+
   function foundMaterial(key) {
     const p = FOUND_PRESETS[key] || FOUND_PRESETS.slab;
+    const map = makePatternTexture('concrete', p.hex, 48, { size: 256 });
+    const bump = makeBumpTexture('concrete', 48, { size: 128 });
+    map.repeat.set(2.2, 2.2);
+    bump.repeat.set(2.2, 2.2);
     return new THREE.MeshStandardMaterial({
       color: new THREE.Color(p.hex),
+      map,
+      bumpMap: bump,
+      bumpScale: 0.018,
       roughness: p.roughness,
       metalness: p.metalness,
     });
@@ -616,6 +855,70 @@ function createView3D(container) {
       color: new THREE.Color('#F8F6F1'),
       roughness: 0.38,
       metalness: 0.06,
+    });
+  }
+
+  /** Painted fascia / barge board at eave edge (P1 detail). */
+  function fasciaMaterial() {
+    return new THREE.MeshStandardMaterial({
+      color: new THREE.Color('#EDE8DF'),
+      roughness: 0.55,
+      metalness: 0.04,
+    });
+  }
+
+  /** Soft soffit underside under overhang. */
+  function soffitMaterial() {
+    return new THREE.MeshStandardMaterial({
+      color: new THREE.Color('#E8E2D6'),
+      roughness: 0.82,
+      metalness: 0.0,
+      side: THREE.DoubleSide,
+    });
+  }
+
+  /** Lumber grain for studs / trusses / plates (educational framing). */
+  function lumberMaterial() {
+    const map = makePatternTexture('lumber', '#C9A66B', 32, { size: 256 });
+    const bump = makeBumpTexture('lumber', 32, { size: 128 });
+    map.repeat.set(1.6, 2.4);
+    bump.repeat.set(1.6, 2.4);
+    return new THREE.MeshStandardMaterial({
+      color: new THREE.Color(0xc9a66b),
+      map,
+      bumpMap: bump,
+      bumpScale: 0.025,
+      roughness: 0.88,
+      metalness: 0.02,
+    });
+  }
+
+  /** Darker/warmer floor-truss lumber — stronger contrast vs grid/ground from interior. */
+  function floorTrussLumberMaterial(baseMat) {
+    void baseMat;
+    const map = makePatternTexture('lumber', '#A8743A', 28, { size: 256 });
+    const bump = makeBumpTexture('lumber', 28, { size: 128 });
+    map.repeat.set(1.8, 2.6);
+    bump.repeat.set(1.8, 2.6);
+    return new THREE.MeshStandardMaterial({
+      color: new THREE.Color(0xa8743a),
+      map,
+      bumpMap: bump,
+      bumpScale: 0.04,
+      roughness: 0.82,
+      metalness: 0.03,
+    });
+  }
+
+  /** Muted grass/gravel ground — less flat plastic. */
+  function groundMaterial() {
+    const map = makePatternTexture('grass', '#6F7A5E', 40, { size: 256 });
+    map.repeat.set(12, 12);
+    return new THREE.MeshStandardMaterial({
+      color: new THREE.Color(0x6f7a5e),
+      map,
+      roughness: 0.96,
+      metalness: 0.0,
     });
   }
 
@@ -656,7 +959,7 @@ function createView3D(container) {
 
   /** Procedural wood-plank floor albedo (no external assets). */
   function makeFloorTexture(kind) {
-    const size = 256;
+    const size = 512;
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
@@ -664,62 +967,63 @@ function createView3D(container) {
     if (kind === 'tile') {
       ctx.fillStyle = '#D8D2C8';
       ctx.fillRect(0, 0, size, size);
-      const tw = 64, th = 64;
+      const tw = 96, th = 96;
       for (let y = 0; y < size; y += th) {
         for (let x = 0; x < size; x += tw) {
-          const shade = 0.92 + ((x + y) % 7) * 0.01;
+          const shade = 0.90 + ((x + y) % 7) * 0.012;
           ctx.fillStyle = 'rgb(' + Math.round(210 * shade) + ',' + Math.round(200 * shade) + ',' + Math.round(188 * shade) + ')';
-          ctx.fillRect(x + 2, y + 2, tw - 4, th - 4);
-          ctx.strokeStyle = 'rgba(120,110,100,0.35)';
+          ctx.fillRect(x + 3, y + 3, tw - 6, th - 6);
+          ctx.strokeStyle = 'rgba(110,100,90,0.4)';
           ctx.lineWidth = 2;
           ctx.strokeRect(x + 1, y + 1, tw - 2, th - 2);
         }
       }
     } else {
-      // wood planks along U
+      // wood planks along U — richer grain + seam depth
       ctx.fillStyle = '#C4A574';
       ctx.fillRect(0, 0, size, size);
-      const ph = 36;
+      const ph = 48;
       for (let row = 0, y = 0; y < size; y += ph, row++) {
         const base = row % 3 === 0 ? '#C8A878' : (row % 3 === 1 ? '#B8956A' : '#D0B080');
         ctx.fillStyle = base;
         ctx.fillRect(0, y, size, ph - 1);
-        // grain
-        for (let g = 0; g < 5; g++) {
-          ctx.strokeStyle = 'rgba(80,50,20,' + (0.04 + (g % 3) * 0.02) + ')';
+        for (let g = 0; g < 7; g++) {
+          ctx.strokeStyle = 'rgba(80,50,20,' + (0.05 + (g % 3) * 0.025) + ')';
           ctx.beginPath();
-          const gy = y + 6 + g * 6;
+          const gy = y + 5 + g * 6;
           ctx.moveTo(0, gy);
-          for (let x = 0; x < size; x += 16) {
-            ctx.lineTo(x + 8, gy + ((x + row) % 5) - 2);
-            ctx.lineTo(x + 16, gy);
+          for (let x = 0; x < size; x += 14) {
+            ctx.lineTo(x + 7, gy + ((x + row * 3) % 5) - 2);
+            ctx.lineTo(x + 14, gy);
           }
           ctx.stroke();
         }
-        // plank seam
-        ctx.fillStyle = 'rgba(60,40,20,0.22)';
-        ctx.fillRect(0, y + ph - 2, size, 2);
-        // staggered end joints
-        const joint = ((row * 97) % (size - 40)) + 20;
-        ctx.fillStyle = 'rgba(60,40,20,0.18)';
-        ctx.fillRect(joint, y, 2, ph - 2);
+        ctx.fillStyle = 'rgba(50,32,14,0.28)';
+        ctx.fillRect(0, y + ph - 3, size, 3);
+        const joint = ((row * 97) % (size - 50)) + 25;
+        ctx.fillStyle = 'rgba(50,32,14,0.22)';
+        ctx.fillRect(joint, y, 2, ph - 3);
       }
     }
     const tex = new THREE.CanvasTexture(canvas);
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 4;
-    tex.repeat.set(kind === 'tile' ? 4 : 3.5, kind === 'tile' ? 4 : 3.5);
+    tex.repeat.set(kind === 'tile' ? 4.5 : 4, kind === 'tile' ? 4.5 : 4);
     tex.needsUpdate = true;
     return tex;
   }
 
   function floorMaterial(kind) {
     const map = makeFloorTexture(kind || 'wood');
+    const bump = makeBumpTexture(kind === 'tile' ? 'slate' : 'lumber', 28, { size: 128 });
+    bump.repeat.copy(map.repeat);
     return new THREE.MeshStandardMaterial({
       color: new THREE.Color(kind === 'tile' ? '#D0CAC0' : '#C4A574'),
       map,
-      roughness: kind === 'tile' ? 0.7 : 0.78,
+      bumpMap: bump,
+      bumpScale: kind === 'tile' ? 0.012 : 0.02,
+      roughness: kind === 'tile' ? 0.68 : 0.76,
       metalness: 0.0,
     });
   }
@@ -783,7 +1087,7 @@ function createView3D(container) {
     }
 
     // Soften sun a touch when finished interior so fills read without blown exteriors
-    if (sunLight) sunLight.intensity = finished ? 0.75 : 0.92;
+    if (sunLight) sunLight.intensity = finished ? 0.88 : 1.05;
     if (hemiLight) hemiLight.intensity = finished ? 0.58 : 0.48;
     if (ambientWarm) ambientWarm.intensity = finished ? 0.28 * scale : 0.1;
   }
@@ -911,8 +1215,8 @@ function createView3D(container) {
 
   /**
    * Conceptual wood floor TRUSS grid under a rectangular floor (EXAMPLE spacing).
-   * ~10 in deep with top/bottom chords + web diagonals/verticals so depth reads
-   * in side and orbit views. Not engineering — educational massing only.
+   * ~10 in labeled depth (visual ~13 in) with top/bottom chords + open webs so
+   * depth reads from interior low/across — not only side/under. Not engineering.
    */
   function addFloorFraming(cx, cz, lenX, lenZ, group, lumberMat, opts) {
     const w = Math.abs(lenX);
@@ -931,12 +1235,11 @@ function createView3D(container) {
     // Top of truss just under floor slab (~0.02–0.05 below y=0 local)
     const topY = (opts && opts.topY != null) ? opts.topY : -0.04;
     const midY = topY - trussH / 2;
-    const mat = lumberMat || new THREE.MeshStandardMaterial({
-      color: new THREE.Color(0xc9a66b), roughness: 0.9, metalness: 0.02,
-    });
+    // Richer/darker floor-truss lumber vs ground/grid so chords+webs pop from interior
+    const mat = floorTrussLumberMaterial(lumberMat);
 
-    const tag = { type: 'floorTruss', label: 'Floor truss', example: true };
-    const girderTag = { type: 'floorTruss', label: 'Floor girder', example: true };
+    const tag = { type: 'floorTruss', label: '~10 in floor truss', example: true };
+    const girderTag = { type: 'floorTruss', label: '~10 in floor girder', example: true };
 
     function tagMesh(mesh, ud) {
       mesh.castShadow = true;
@@ -1005,15 +1308,16 @@ function createView3D(container) {
       wrap.add(g);
     }
 
-    // Primary trusses span the shorter direction (common conceptual cue)
-    const spanShortX = w <= d;
-    const runLen = spanShortX ? d : w;
-    const n = Math.max(2, Math.round(runLen / oc) + 1);
+    // Span the LONGER plan dim so looking across the short room span (typical
+    // interior) faces truss sides (chords + webs), not just ends / flat planks.
+    const spanAlongX = w >= d;
+    const placeRun = spanAlongX ? d : w; // place trusses along the short axis
+    const n = Math.max(2, Math.round(placeRun / oc) + 1);
 
     const inset = Math.min(0.35, Math.min(w, d) * 0.04);
     for (let i = 0; i < n; i++) {
       const t = n === 1 ? 0.5 : i / (n - 1);
-      if (spanShortX) {
+      if (spanAlongX) {
         const z = cz - d / 2 + inset + t * (d - inset * 2);
         addFloorTruss(cx, z, Math.max(1, w - inset * 2), 0);
       } else {
@@ -1038,18 +1342,11 @@ function createView3D(container) {
         });
       }
     }
-    if (spanShortX) {
-      // Girders along X (span direction) at near/far Z — plus rim members on short ends
-      addGirderTruss(cx, cz - d / 2 + inset * 0.5, Math.max(1, w - inset), 0);
-      addGirderTruss(cx, cz + d / 2 - inset * 0.5, Math.max(1, w - inset), 0);
-      addGirderTruss(cx - w / 2 + inset * 0.5, cz, Math.max(1, d - inset), Math.PI / 2);
-      addGirderTruss(cx + w / 2 - inset * 0.5, cz, Math.max(1, d - inset), Math.PI / 2);
-    } else {
-      addGirderTruss(cx - w / 2 + inset * 0.5, cz, Math.max(1, d - inset), Math.PI / 2);
-      addGirderTruss(cx + w / 2 - inset * 0.5, cz, Math.max(1, d - inset), Math.PI / 2);
-      addGirderTruss(cx, cz - d / 2 + inset * 0.5, Math.max(1, w - inset), 0);
-      addGirderTruss(cx, cz + d / 2 - inset * 0.5, Math.max(1, w - inset), 0);
-    }
+    // Rim girders on all four edges
+    addGirderTruss(cx, cz - d / 2 + inset * 0.5, Math.max(1, w - inset), 0);
+    addGirderTruss(cx, cz + d / 2 - inset * 0.5, Math.max(1, w - inset), 0);
+    addGirderTruss(cx - w / 2 + inset * 0.5, cz, Math.max(1, d - inset), Math.PI / 2);
+    addGirderTruss(cx + w / 2 - inset * 0.5, cz, Math.max(1, d - inset), Math.PI / 2);
 
     return wrap;
   }
@@ -1793,51 +2090,68 @@ function createView3D(container) {
     // Tip drops oh*pitch along the same slope (skip drop for flat/low-slope)
     const tipDrop = (tieIn === 'flat' || tieIn === 'low-slope') ? 0 : oh * pitch;
     const eaveY = plateY - tipDrop;
-    function plane(corners) {
+    const soffitMat = soffitMaterial();
+    const fasciaMat = fasciaMaterial();
+    const FASCIA_H = 7 / 12; // ~7 in fascia face
+    const FASCIA_T = 1.5 / 12;
+    function plane(corners, mat, label) {
       const verts = new Float32Array(corners.flat());
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
       geo.setIndex([0, 1, 2, 0, 2, 3]);
-      geo.computeVertexNormals();
-      const mesh = new THREE.Mesh(geo, roofMat);
+      const mesh = new THREE.Mesh(geo, mat || roofMat);
+      applyRoofUVs(mesh, 0.5);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
-      mesh.userData = { type: 'roof', label: 'Roof' };
+      mesh.userData = { type: 'roof', label: label || 'Roof' };
       group.add(mesh);
       return mesh;
     }
     function addThickPlanes(topCorners) {
-      plane(topCorners);
-      // Underside offset for eave/roof thickness cue
+      plane(topCorners, roofMat, 'Roof');
+      // Underside = soffit cue (lighter) for eave/roof thickness
       const bot = topCorners.map((c) => [c[0], c[1] - thick, c[2]]);
-      plane(bot);
+      plane(bot, soffitMat, 'Soffit');
+    }
+    function addFasciaBar(w, h, d, x, y, z) {
+      const edge = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), fasciaMat);
+      edge.position.set(x, y, z);
+      edge.castShadow = true;
+      edge.receiveShadow = true;
+      edge.userData = { type: 'roof', label: 'Fascia' };
+      group.add(edge);
     }
     if (alongZ) {
       addThickPlanes([[-W / 2, eaveY, -D / 2], [0, ridgeY, -D / 2], [0, ridgeY, D / 2], [-W / 2, eaveY, D / 2]]);
       addThickPlanes([[W / 2, eaveY, -D / 2], [0, ridgeY, -D / 2], [0, ridgeY, D / 2], [W / 2, eaveY, D / 2]]);
-      // Eave edge bands (thickness readable at overhang)
-      [[-W / 2, D], [W / 2, D]].forEach(([x, _d]) => {
-        const edge = new THREE.Mesh(
-          new THREE.BoxGeometry(thick * 0.9, thick, D),
-          roofMat
-        );
+      // Roof edge thickness + painted fascia hanging at eave tip
+      [[-W / 2], [W / 2]].forEach(([x]) => {
+        const edge = new THREE.Mesh(new THREE.BoxGeometry(thick * 0.85, thick, D), roofMat);
         edge.position.set(x, eaveY - thick / 2, 0);
+        applyRoofUVs(edge, 0.5);
         edge.castShadow = true;
         edge.userData = { type: 'roof', label: 'Roof eave' };
         group.add(edge);
+        addFasciaBar(FASCIA_T, FASCIA_H, D * 0.98, x + (x < 0 ? -FASCIA_T * 0.3 : FASCIA_T * 0.3), eaveY - thick - FASCIA_H / 2 + 0.02, 0);
+      });
+      // Rake / barge fascia on gable ends
+      [[-D / 2], [D / 2]].forEach(([z]) => {
+        addFasciaBar(W * 0.98, FASCIA_H * 0.85, FASCIA_T, 0, eaveY - thick - FASCIA_H * 0.4, z + (z < 0 ? -FASCIA_T * 0.2 : FASCIA_T * 0.2));
       });
     } else {
       addThickPlanes([[-W / 2, eaveY, -D / 2], [-W / 2, ridgeY, 0], [W / 2, ridgeY, 0], [W / 2, eaveY, -D / 2]]);
       addThickPlanes([[-W / 2, eaveY, D / 2], [-W / 2, ridgeY, 0], [W / 2, ridgeY, 0], [W / 2, eaveY, D / 2]]);
       [[-D / 2], [D / 2]].forEach(([z]) => {
-        const edge = new THREE.Mesh(
-          new THREE.BoxGeometry(W, thick, thick * 0.9),
-          roofMat
-        );
+        const edge = new THREE.Mesh(new THREE.BoxGeometry(W, thick, thick * 0.85), roofMat);
         edge.position.set(0, eaveY - thick / 2, z);
+        applyRoofUVs(edge, 0.5);
         edge.castShadow = true;
         edge.userData = { type: 'roof', label: 'Roof eave' };
         group.add(edge);
+        addFasciaBar(W * 0.98, FASCIA_H, FASCIA_T, 0, eaveY - thick - FASCIA_H / 2 + 0.02, z + (z < 0 ? -FASCIA_T * 0.3 : FASCIA_T * 0.3));
+      });
+      [[-W / 2], [W / 2]].forEach(([x]) => {
+        addFasciaBar(FASCIA_T, FASCIA_H * 0.85, D * 0.98, x + (x < 0 ? -FASCIA_T * 0.2 : FASCIA_T * 0.2), eaveY - thick - FASCIA_H * 0.4, 0);
       });
     }
   }
@@ -1857,29 +2171,52 @@ function createView3D(container) {
     const tipDrop = (tieIn === 'flat' || tieIn === 'low-slope') ? 0 : oh * pitch;
     const eaveY = plateY - tipDrop;
     const ridgeY = plateY + rise;
+    const soffitMat = soffitMaterial();
+    const fasciaMat = fasciaMaterial();
+    const FASCIA_H = 7 / 12;
+    const FASCIA_T = 1.5 / 12;
     function addFace(corners, indices) {
       const verts = new Float32Array(corners.flat());
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
       geo.setIndex(indices);
-      geo.computeVertexNormals();
       const mesh = new THREE.Mesh(geo, roofMat);
+      applyRoofUVs(mesh, 0.5);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.userData = { type: 'roof', label: 'Roof' };
       group.add(mesh);
-      // underside for thickness
+      // underside soffit for thickness
       const bot = corners.map((c) => [c[0], c[1] - thick, c[2]]);
       const verts2 = new Float32Array(bot.flat());
       const geo2 = new THREE.BufferGeometry();
       geo2.setAttribute('position', new THREE.BufferAttribute(verts2, 3));
       geo2.setIndex(indices);
-      geo2.computeVertexNormals();
-      const mesh2 = new THREE.Mesh(geo2, roofMat);
+      const mesh2 = new THREE.Mesh(geo2, soffitMat);
+      applyRoofUVs(mesh2, 0.5);
       mesh2.castShadow = true;
-      mesh2.userData = { type: 'roof', label: 'Roof' };
+      mesh2.userData = { type: 'roof', label: 'Soffit' };
       group.add(mesh2);
     }
+    // Simple perimeter fascia band at eave height (hip)
+    function addHipFascia() {
+      const y = eaveY - thick - FASCIA_H / 2 + 0.02;
+      [[0, -D / 2], [0, D / 2]].forEach(([x, z]) => {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(W * 0.98, FASCIA_H, FASCIA_T), fasciaMat);
+        m.position.set(x, y, z + (z < 0 ? -FASCIA_T * 0.25 : FASCIA_T * 0.25));
+        m.castShadow = true;
+        m.userData = { type: 'roof', label: 'Fascia' };
+        group.add(m);
+      });
+      [[-W / 2, 0], [W / 2, 0]].forEach(([x, z]) => {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(FASCIA_T, FASCIA_H, D * 0.98), fasciaMat);
+        m.position.set(x + (x < 0 ? -FASCIA_T * 0.25 : FASCIA_T * 0.25), y, z);
+        m.castShadow = true;
+        m.userData = { type: 'roof', label: 'Fascia' };
+        group.add(m);
+      });
+    }
+    addHipFascia();
     if (D >= W) {
       const rh = Math.max(0, D / 2 - W / 2);
       const r0 = [0, ridgeY, -rh], r1 = [0, ridgeY, rh];
@@ -2214,9 +2551,9 @@ function createView3D(container) {
     const roofKey = store.roofing_texture || 'asphalt';
     const lowSlope = pitch <= (2 / 12) || store.roof_tie_in === 'flat' || store.roof_tie_in === 'low-slope';
 
-    // §2 materials from Guidance answers only (named presets + procedural maps)
+    // §2 + realism2 materials from Guidance answers (procedural albedo + bump)
     const wallMat = cladMaterial(cladKey);
-    const lumberMat = mat(0xc9a66b, { roughness: 0.9, metalness: 0.02 });
+    const lumberMat = lumberMaterial();
     const roofMat = roofMaterial(roofKey, { lowSlope });
     const floorMat = floorMaterial('wood');
     const glassMat = glassMaterial();
@@ -2224,7 +2561,7 @@ function createView3D(container) {
     const houseMat = cladMaterial('stucco'); // existing mass — neutral until house B7 drives it
     const foundKey = store.foundation_type || 'slab';
     const foundMat = foundMaterial(foundKey === 'piers' ? 'piers' : foundKey);
-    const beamMat = mat(0x7a746c, { roughness: 0.88 });
+    const beamMat = foundMaterial('crawl'); // grade beam reads as cast concrete
     const attachMat = mat(0x2f6f6a, { emissive: 0x1a3d3a, emissiveIntensity: 0.12 });
     const frameWallMat = showStuds ? lumberMat : wallMat;
     // Educational floor framing: default ON for all foundations unless user overrode
@@ -2258,15 +2595,26 @@ function createView3D(container) {
 
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(80, 80),
-      mat(0x6f7a5e, { roughness: 0.98 }) // muted grass/gravel
+      groundMaterial()
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.05;
     ground.receiveShadow = true;
     ground.userData = { type: 'ground' };
     rootGroup.add(ground);
-    const grid = new THREE.GridHelper(80, 40, 0xb8c0b8, 0xd0d6ce);
-    grid.position.y = 0;
+    // Soft contact shadow disc under footprint (AO cue even if sun shadows soft)
+    const contact = new THREE.Mesh(
+      new THREE.CircleGeometry(Math.max(10, (store.footprint_l_ft || 14) * 0.55), 48),
+      new THREE.MeshBasicMaterial({ color: 0x2a2a22, transparent: true, opacity: 0.18, depthWrite: false })
+    );
+    contact.rotation.x = -Math.PI / 2;
+    contact.position.y = -0.03;
+    contact.userData = { type: 'ground' };
+    rootGroup.add(contact);
+    const grid = new THREE.GridHelper(80, 40, 0xa8b4a0, 0xc5cebc);
+    grid.position.y = 0.01;
+    const gMats = Array.isArray(grid.material) ? grid.material : [grid.material];
+    gMats.forEach((m) => { if (m) { m.transparent = true; m.opacity = 0.45; } });
     rootGroup.add(grid);
 
     if (trulyEmpty) {
