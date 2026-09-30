@@ -1,3 +1,5 @@
+**3D / realism (`?v=realism2`):** richer procedural cladding/roofing/foundation/ground + lumber grain (albedo+bump), late-morning sun + fill + interior bounce, soft shadows, fascia/soffit/corner-board cues — still conceptual. Keeps winlook windows, truss2 floor trusses, roof3 plate, edge piers + **piers1** dials, openings1, share1, budget1.
+
 **3D / piers (`?v=piers1`):** editable pier height / spacing / diameter / count · **roof height (`?v=roof3`):** addition roof **underside** at wall line sits on / above top plate (`max` wall `heightFt`); top surface = plate + roof thickness; overhang tip may drop along pitch outside walls. Rise from building half-span; footprint = addition bounds + wall thickness + clamped eave. Pier lift still raises roof with structure. Piers / sonotubes only under **wall edges** (corners + perimeter), never mid-span.
 
 
@@ -64,6 +66,16 @@ Orbit: drag · zoom: scroll · pan: right-drag.
 - Guidance project type = addition → prompt for existing house L×W (default 40×30).
 - Locked muted footprint on Plan (not selectable). Plan tool **House** reopens the prompt.
 - Saved with project; shown in 3D as distinct mass.
+
+## 3D realism (`?v=realism2`)
+
+Visible step up from sketch / early P0 massing — still **conceptual** (not CAD / photoreal):
+
+- **Materials:** clapboard/brick/stone courses, asphalt tabs, concrete mottling, lumber grain, grass/gravel ground — procedural canvas albedo + bump (no external texture packs).
+- **Lighting:** late-morning warm sun (1 shadow caster), cooler sky fill, warm interior bounce; Shadows toggle (phone auto-off).
+- **Detail:** fascia + soffit at eaves, corner boards on clapboard-family cladding, window recess/sill/casing (winlook).
+- **Preserved:** studs / floor framing toggles, pier dials, roof3 plate height, openings1, share1, budget1.
+- **Disclaimer:** Conceptual visualization — not construction documents.
 
 ## Foundation (E21 / piers) — `?v=piers1`
 - Plan toolbar **Foundation** (under **Existing**) and 3D **Foundation** button open the same picker as Guidance **E21**.
