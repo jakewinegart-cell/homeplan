@@ -54,6 +54,11 @@ const WIN_RECESS = 2.5 / 12; // 2–3 in glass setback
 const SILL_PROJ = 1.25 / 12; // projecting exterior sill
 const ROOF_THICK = 5 / 12; // ~4–6 in sheathing+shingle visual
 const FOUND_REVEAL_SLAB = 0.75; // 9 in reveal
+/** World Y of finished grade — ground mesh/grid top. Pier bottoms, slab underside,
+ *  crawl stem bottoms, and stair feet all sit ON this plane. Floor plane is above. */
+const GRADE_Y = 0;
+/** Thin slab pad under floor trusses when Floor framing is ON (ft). */
+const SLAB_PAD_H = 0.2;
 const PIER_H_DEFAULT = 2.5; // ~2–3 ft elevated reveal
 const PIER_SPACING_DEFAULT = 6; // ft o.c. along wall edges
 const PIER_DIAMETER_IN_DEFAULT = 12; // sonotube diameter (in)
@@ -1388,6 +1393,95 @@ function createView3D(container) {
     return wrap;
   }
 
+  /**
+   * How far below local floor Y=0 the foundation contact sits (before grade lift).
+   * After lift, that contact lands on GRADE_Y and the floor is this many ft above grade.
+   * Piers: 0 (columns already span GRADE_Y→pierH; building is lifted by pierH separately).
+   * Basement: 0 (stem intentionally buried below grade; floor stays at grade).
+   */
+  function foundationContactDepth(ft, framingOn) {
+    if (ft === 'piers' || ft === 'basement') return 0;
+    if (ft === 'crawl') return 2.5;
+    if (ft === 'slab') {
+      if (framingOn) {
+        // Match pad placement in buildFromPlan: under truss bottom
+        const beamBot = -0.02 - FLOOR_IBEAM_H;
+        const padCenterY = beamBot - SLAB_PAD_H / 2 - 0.02;
+        const padBottom = padCenterY - SLAB_PAD_H / 2;
+        return Math.max(0.2, -padBottom);
+      }
+      return FOUND_REVEAL_SLAB;
+    }
+    return 0;
+  }
+
+  /** Floor elevation above GRADE_Y after foundation is applied. */
+  function floorElevationAboveGrade(ft, store, framingOn) {
+    if (ft === 'piers') {
+      return (store && store.pier_height_ft > 0) ? store.pier_height_ft : PIER_H_DEFAULT;
+    }
+    if (ft === 'crawl') return 2.5;
+    if (ft === 'basement') return 0; // floor at grade; stem below
+    if (ft === 'slab') return foundationContactDepth('slab', framingOn);
+    return 0.75;
+  }
+
+  /**
+   * Raise building content so foundation bottoms / pier tops meet the grade convention.
+   * Never moves ground, grid, or stairs-from-grade (added after lift).
+   */
+  function liftRootToGrade(root, amount, opts) {
+    if (!(amount > 0) || !root) return;
+    const skipPierFound = !!(opts && opts.skipPierFoundation);
+    [...root.children].forEach((ch) => {
+      if (!ch) return;
+      if (ch.type === 'GridHelper') return;
+      if (ch.userData && ch.userData.type === 'ground') return;
+      if (ch.userData && ch.userData.type === 'grid') return;
+      if (ch.userData && (ch.userData.skipPierLift || ch.userData.type === 'stairsFromGrade')) return;
+      if (skipPierFound && ch.userData && ch.userData.type === 'pierFoundation') return;
+      ch.position.y += amount;
+    });
+  }
+
+  /** Place ground mesh + contact blot + grid all on GRADE_Y (tiny epsilons avoid z-fight). */
+  function addGradePlane(root, trulyEmpty, store) {
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(80, 80),
+      groundMaterial()
+    );
+    ground.rotation.x = -Math.PI / 2;
+    // Flush with GRADE_Y so pier/slab/stair feet read planted (not a hairline float).
+    ground.position.y = GRADE_Y;
+    if (ground.material) {
+      ground.material.polygonOffset = true;
+      ground.material.polygonOffsetFactor = 1;
+      ground.material.polygonOffsetUnits = 1;
+    }
+    ground.receiveShadow = true;
+    ground.userData = { type: 'ground' };
+    root.add(ground);
+
+    if (!trulyEmpty) {
+      const contact = new THREE.Mesh(
+        new THREE.CircleGeometry(Math.max(10, (store.footprint_l_ft || 14) * 0.55), 48),
+        new THREE.MeshBasicMaterial({ color: 0x2a2a22, transparent: true, opacity: 0.18, depthWrite: false })
+      );
+      contact.rotation.x = -Math.PI / 2;
+      contact.position.y = GRADE_Y + 0.004;
+      contact.userData = { type: 'ground' };
+      root.add(contact);
+    }
+
+    const grid = new THREE.GridHelper(80, 40, 0x9aab90, 0xb8c4a8);
+    grid.position.y = GRADE_Y + 0.015;
+    const gMats = Array.isArray(grid.material) ? grid.material : [grid.material];
+    gMats.forEach((m) => { if (m) { m.transparent = true; m.opacity = 0.28; } });
+    grid.userData = { type: 'grid' };
+    grid.traverse((o) => { o.userData = { type: 'grid' }; });
+    root.add(grid);
+  }
+
   /** Hollow stem / basement wall ring so under-floor framing stays visible (educational). */
   function addStemWallRing(cx, cz, lenX, lenZ, height, yBottom, material, group, wallT) {
     const t = wallT != null ? wallT : 0.55;
@@ -1520,23 +1614,25 @@ function createView3D(container) {
     wrap.userData.pierR = pierR;
 
     pierPositions.forEach(([px, pz]) => {
+      // Footing pad sits ON grade (bottom at GRADE_Y); column from grade to pier top.
+      const padH = 0.25;
+      const pad = new THREE.Mesh(
+        new THREE.CylinderGeometry(pierR * 1.6, pierR * 1.7, padH, 12),
+        foundMat
+      );
+      pad.position.set(px, GRADE_Y + padH / 2, pz);
+      pad.receiveShadow = true;
+      pad.userData = { type: 'pier', label: 'Pier footing' };
+      group.add(pad);
       const cyl = new THREE.Mesh(
         new THREE.CylinderGeometry(pierR, pierR * 1.05, h, 16),
         foundMat
       );
-      cyl.position.set(px, h / 2, pz);
+      cyl.position.set(px, GRADE_Y + h / 2, pz);
       cyl.castShadow = true;
       cyl.receiveShadow = true;
       cyl.userData = { type: 'pier', label: 'Pier / sonotube' };
       group.add(cyl);
-      const pad = new THREE.Mesh(
-        new THREE.CylinderGeometry(pierR * 1.6, pierR * 1.7, 0.25, 12),
-        foundMat
-      );
-      pad.position.set(px, 0.12, pz);
-      pad.receiveShadow = true;
-      pad.userData = { type: 'pier', label: 'Pier footing' };
-      group.add(pad);
     });
 
     // Grade beam along edge / wall lines (ring for footprint; segments when walls given)
@@ -2823,12 +2919,14 @@ function createView3D(container) {
       const hyp = Math.hypot(runLength, riseTotal);
       const pitch = Math.atan2(riseTotal, runLength);
       const strInset = strThick / 2 + 0.02;
+      // Center Y so after pitch rotation the low end sits ON grade (not buried by strDepth/2).
+      const strCenterY = riseTotal / 2 + (strDepth / 2) * Math.cos(pitch);
       [-width / 2 + strInset, width / 2 - strInset].forEach((sx) => {
         const str = new THREE.Mesh(
           new THREE.BoxGeometry(strThick, strDepth, hyp),
           stringerMat
         );
-        str.position.set(sx, riseTotal / 2, 0);
+        str.position.set(sx, strCenterY, 0);
         str.rotation.x = -pitch;
         str.castShadow = true;
         str.receiveShadow = true;
@@ -2864,8 +2962,9 @@ function createView3D(container) {
           };
           g.add(tread);
         });
-        // Thin riser board under front edge of tread pack
-        if (i > 0 || rise > 0.2) {
+        // Thin riser under front of tread pack. Skip grade step (i===0) so
+        // boards do not dig below GRADE_Y — stringer feet already meet grade.
+        if (i > 0) {
           const riserT = 0.75 / 12; // ~1× thickness
           const riserH = Math.max(0.08, rise - boardT * 0.15);
           const zRiser = zStep - packDepth / 2 + nosing - riserT / 2;
@@ -2962,37 +3061,8 @@ function createView3D(container) {
     }
     if (canvasHost) canvasHost.style.opacity = trulyEmpty ? '0.3' : '1';
 
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(80, 80),
-      groundMaterial()
-    );
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.05;
-    ground.receiveShadow = true;
-    ground.userData = { type: 'ground' };
-    rootGroup.add(ground);
-
-    // Contact shadow only when there is real Plan geometry — never size from Guidance footprint alone.
-    if (!trulyEmpty) {
-      const contact = new THREE.Mesh(
-        new THREE.CircleGeometry(Math.max(10, (store.footprint_l_ft || 14) * 0.55), 48),
-        new THREE.MeshBasicMaterial({ color: 0x2a2a22, transparent: true, opacity: 0.18, depthWrite: false })
-      );
-      contact.rotation.x = -Math.PI / 2;
-      contact.position.y = -0.03;
-      contact.userData = { type: 'ground' };
-      rootGroup.add(contact);
-    }
-
-    const grid = new THREE.GridHelper(80, 40, 0x9aab90, 0xb8c4a8);
-    grid.position.y = 0.01;
-    const gMats = Array.isArray(grid.material) ? grid.material : [grid.material];
-    gMats.forEach((m) => { if (m) { m.transparent = true; m.opacity = 0.28; } });
-    // Tag grid + children so opening-place raycasts can skip them (untagged
-    // GridHelper lines were stealing hits after deck1 pulled the camera back).
-    grid.userData = { type: 'grid' };
-    grid.traverse((o) => { o.userData = { type: 'grid' }; });
-    rootGroup.add(grid);
+    // Grade at GRADE_Y=0: pier bottoms / slab underside / stair feet sit ON this plane.
+    addGradePlane(rootGroup, trulyEmpty, store);
 
     if (trulyEmpty) {
       // Defensive: zero house/addition meshes — ground + grid only.
@@ -3279,7 +3349,9 @@ function createView3D(container) {
         }
       }
 
-      // Foundation under addition footprint (not planBounds / existing house)
+      // Foundation under addition footprint (not planBounds / existing house).
+      // Y convention: GRADE_Y=0 is ground. Build foundations in local floor=0 space,
+      // then lift content so contact bottoms sit ON grade; stairs span grade→floor.
       if (store.show_foundation !== false) {
         const ft = store.foundation_type || 'slab';
         const bb = planBounds(plan);
@@ -3288,8 +3360,10 @@ function createView3D(container) {
         const fcz = abFound ? (abFound.cy - oz) : 0;
         const fW = abFound ? Math.max(abFound.w, 4) : (bb ? Math.max(bb.w, 4) : 6);
         const fD = abFound ? Math.max(abFound.d, 4) : (bb ? Math.max(bb.d, 4) : 6);
+        let floorAboveGrade = 0;
         if (abFound && ft === 'piers') {
           const pierH = store.pier_height_ft > 0 ? store.pier_height_ft : PIER_H_DEFAULT;
+          floorAboveGrade = pierH;
           addPierFoundation(fcx, fcz, fW, fD, pierH, foundMat, beamMat, rootGroup, {
             walls: plan.walls || [],
             ox: ox,
@@ -3298,26 +3372,13 @@ function createView3D(container) {
             diameterIn: store.pier_diameter_in,
             pierCount: store.pier_count,
           });
-          // Elevate building content onto pier tops (leave ground/grid/piers)
-          [...rootGroup.children].forEach((ch) => {
-            if (!ch) return;
-            if (ch.type === 'GridHelper' || ch.type === 'Mesh' && ch.geometry && ch.geometry.type === 'PlaneGeometry') return;
-            if (ch.userData && ch.userData.type === 'pierFoundation') return;
-            // ground plane is first Mesh PlaneGeometry — also skip by material color check via userData
-            if (ch.userData && ch.userData.type === 'ground') return;
-            if (ch.userData && (ch.userData.skipPierLift || ch.userData.type === 'stairsFromGrade')) return;
-            ch.position.y += pierH;
-          });
-          // Stairs from grade up to elevated floor / deck top
-          addStairsFromPlan(plan, ox, oz, rootGroup, pierH, {
-            treadMat: floorMat,
-            stringerMat: lumberMat,
-          });
+          // Elevate building onto pier tops (leave ground/grid/piers at grade)
+          liftRootToGrade(rootGroup, pierH, { skipPierFoundation: true });
         } else if (abFound && ft === 'slab') {
-          // Framing on: thin pad below trusses so members read from above.
-          // Framing off: normal ~9 in reveal under finish floor.
+          // Framing on: thin pad below trusses. Framing off: ~9 in slab reveal.
+          // Both hang below local floor=0; lift puts underside ON grade.
           if (showFloorFraming) {
-            const padH = 0.2;
+            const padH = SLAB_PAD_H;
             const beamBot = -0.02 - FLOOR_IBEAM_H;
             boxAt(fW + 0.5, padH, fD + 0.5,
               fcx, beamBot - padH / 2 - 0.02, fcz, foundMat, rootGroup,
@@ -3327,22 +3388,25 @@ function createView3D(container) {
               fcx, -FOUND_REVEAL_SLAB / 2, fcz, foundMat, rootGroup,
               { type: 'foundation', label: 'Foundation' });
           }
+          floorAboveGrade = foundationContactDepth('slab', showFloorFraming);
+          liftRootToGrade(rootGroup, floorAboveGrade);
         } else if (abFound && ft === 'crawl') {
-          // Hollow stem ring — crawl volume open so floor trusses / joists read
+          // Stem built below local floor; lift so stem bottom sits ON grade
           addStemWallRing(fcx, fcz, fW + 0.5, fD + 0.5, 2.5, -2.5, foundMat, rootGroup);
+          floorAboveGrade = 2.5;
+          liftRootToGrade(rootGroup, floorAboveGrade);
         } else if (abFound && ft === 'basement') {
+          // Stem intentionally below grade; floor stays at GRADE_Y (no lift)
           addStemWallRing(fcx, fcz, fW + 0.5, fD + 0.5, 8, -8, foundMat, rootGroup);
+          floorAboveGrade = 0.75; // modest door/deck step only
         }
-        // Non-pier: short EXAMPLE stairs up to near-grade deck / slab floor
-        if (ft !== 'piers') {
-          let stairRise = 0.75; // ~deck board stack / step up
-          if (ft === 'crawl') stairRise = 2.5;
-          if (ft === 'basement') stairRise = 0.75;
-          addStairsFromPlan(plan, ox, oz, rootGroup, stairRise, {
-            treadMat: floorMat,
-            stringerMat: lumberMat,
-          });
-        }
+        // Stairs from grade up to elevated floor / deck top (world-absolute, not double-lifted)
+        const stairRise = Math.max(0.5, floorAboveGrade || 0.75);
+        addStairsFromPlan(plan, ox, oz, rootGroup, stairRise, {
+          treadMat: floorMat,
+          stringerMat: lumberMat,
+        });
+        if (floorAboveGrade > 0) focusY += floorAboveGrade;
       }
     } else {
       // No walls/rooms: show only what Plan actually has (decks / stairs / existing house).
@@ -3384,24 +3448,24 @@ function createView3D(container) {
         joistMat: lumberMat,
       });
 
-      // Lone deck/stairs: modest grade-to-deck rise (no addition foundation required)
-      let stairRise = 0.75;
+      // Lone deck/stairs: raise deck to floor-above-grade so joists aren't buried;
+      // stairs span GRADE_Y → deck top.
       const ft = store.foundation_type || 'slab';
-      if (ft === 'piers') {
-        stairRise = store.pier_height_ft > 0 ? store.pier_height_ft : PIER_H_DEFAULT;
-        // Elevate deck platform with pier height so it matches pier-capable sites
-        [...rootGroup.children].forEach((ch) => {
-          if (!ch || !ch.userData) return;
-          if (ch.userData.type === 'deck') ch.position.y += stairRise;
-          if (ch.userData.type === 'existingHouse') ch.position.y += stairRise;
-        });
-      } else if (ft === 'crawl') {
-        stairRise = 2.5;
-      }
+      const stairRise = Math.max(
+        0.5,
+        floorElevationAboveGrade(ft, store, showFloorFraming) || 0.75
+      );
+      [...rootGroup.children].forEach((ch) => {
+        if (!ch || !ch.userData) return;
+        if (ch.userData.type === 'deck' || ch.userData.type === 'existingHouse') {
+          ch.position.y += stairRise;
+        }
+      });
       addStairsFromPlan(plan, ox, oz, rootGroup, stairRise, {
         treadMat: floorMat,
         stringerMat: lumberMat,
       });
+      focusY += stairRise * 0.35;
 
       if (!keepCam) controls.target.set(focusLocalX, focusY, focusLocalZ);
     }
@@ -3410,10 +3474,11 @@ function createView3D(container) {
     if (!lightCenters.length) {
       lightCenters.push({ x: 0, y: Math.max(3, wallH * 0.88), z: 0, radius: 12 });
     }
-    // If piers elevated sketch content, bump light Y to match pier lift
-    if (sketch && store && store.foundation_type === 'piers') {
-      const pierH = store.pier_height_ft > 0 ? store.pier_height_ft : PIER_H_DEFAULT;
-      lightCenters.forEach((c) => { c.y += pierH; });
+    // Bump interior lights when floor was lifted above grade
+    if (sketch && store) {
+      const ftL = store.foundation_type || 'slab';
+      const liftL = floorElevationAboveGrade(ftL, store, showFloorFraming);
+      if (liftL > 0) lightCenters.forEach((c) => { c.y += liftL; });
     }
     placeInteriorLights(lightCenters, { studs: showStuds });
     applyShadowMode();
@@ -4410,10 +4475,11 @@ function createView3D(container) {
       }
       if (!anyUsable) anyUsable = h.point.clone();
     }
-    // Mid-wall plane (pier-aware) — reliable when decks/grid sit in front of walls
+    // Mid-wall plane (grade-lift aware) — reliable when decks/grid sit in front of walls
     let pierLift = 0;
-    if (lastStore && lastStore.foundation_type === 'piers') {
-      pierLift = (lastStore.pier_height_ft > 0) ? lastStore.pier_height_ft : PIER_H_DEFAULT;
+    if (lastStore) {
+      const ftP = lastStore.foundation_type || 'slab';
+      pierLift = floorElevationAboveGrade(ftP, lastStore, showFloorFraming);
     }
     const y = (((lastStore && lastStore.wall_height_ft) || 8) * 0.45) + pierLift;
     plane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, y, 0));
