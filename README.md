@@ -1,3 +1,5 @@
+**3D openings edit (`?v=edit3d1`):** Restored Add Window/Door place + Delete in 3D after deck1. Grid/deck/stairs/existing-house no longer steal wall taps; camera focuses on addition+decks; inspector Delete + Delete key remove openings.
+
 **Look + roof/truss (`?v=roof4`):** Floor open-web trusses clipped to **addition wall-plate footprint** only (no overshoot past exterior walls; planBounds/existing-house bloat removed). Roof outline = addition **exterior** walls (`additionBounds` + `WALL_THICK`) + modest clamped eave; corners flush with stud/plate outer faces; underside-at-plate (roof3) kept. Prior Look panel (`look1`) cladding/roofing/color controls unchanged. **EXAMPLE.**
 
 **Look (`?v=look1`):** Plan + 3D **Look** panel — cladding (wood / fiber cement / vinyl / brick / stone → `G28` / clad presets), roofing (asphalt / metal / tile / slate → `F25`), roof style (gable / hip → `F24style`), and named siding colors that set `cladding_hex` (tints cladding albedo; Natural keeps the preset). Writes the same Guidance answers so 3D rebuilds immediately. **EXAMPLE.** Guidance stays the source of truth. Does not add pier dials.

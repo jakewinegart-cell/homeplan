@@ -215,6 +215,20 @@
           rebuild3D(true);
           return win;
         },
+        onOpeningDelete(id) {
+          if (!floor || !floor.removeOpening || !id) return false;
+          suppressing3dRebuild = true;
+          let ok = false;
+          try {
+            ok = !!floor.removeOpening(id);
+            if (ok && els.saveStatus) els.saveStatus.textContent = 'Unsaved changes — click Save to keep them.';
+          } finally {
+            suppressing3dRebuild = false;
+          }
+          planDirtyFor3d = true;
+          rebuild3D(true, { preserveCamera: true });
+          return ok;
+        },
         onToast(msg) {
           if (typeof showToast === 'function') showToast(msg);
           else if (els.saveStatus) els.saveStatus.textContent = msg;
@@ -233,7 +247,9 @@
     const keepCam = !!(opts && opts.preserveCamera) || !!prevSel;
     view3d.buildFromPlan(plan, store, { preserveCamera: keepCam });
     view3d.show();
-    if (prevSel && view3d.selectWindow) view3d.selectWindow(prevSel, { silent: true });
+    const stillThere = !!(prevSel && (plan.windows || []).some((w) => w.id === prevSel));
+    if (stillThere && view3d.selectWindow) view3d.selectWindow(prevSel, { silent: true });
+    else if (prevSel && view3d.selectWindow) view3d.selectWindow(null, { silent: true });
     // Keep 3D add-palette defaults in sync with Guidance D18b presets
     if (view3d.setAddPreset && store) {
       if (store.opening_preset_win_w_in && store.opening_preset_win_h_in) {

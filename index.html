@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>HomePlan — Remodel & Additions</title>
-  <link rel="stylesheet" href="styles.css?v=deck1" />
+  <link rel="stylesheet" href="styles.css?v=edit3d1" />
 </head>
 <body>
   <div id="app">
@@ -365,7 +365,7 @@
                 <strong id="v3d-win-title">Editing window</strong>
                 <button type="button" class="v3d-insp-close" id="v3d-win-close" aria-label="Close">×</button>
               </div>
-              <p class="muted small">Drag to slide · handles resize · Esc or Done to exit</p>
+              <p class="muted small">Drag to slide · handles resize · Delete removes · Esc or Done to exit</p>
               <div id="v3d-insp-presets" class="view3d-size-chips v3d-insp-presets" role="group" aria-label="Size presets"></div>
               <label class="v3d-field">Width (ft)
                 <input type="number" id="v3d-win-w" min="0.5" max="20" step="0.25" />
@@ -379,7 +379,10 @@
               <label class="v3d-field">Along wall (t)
                 <input type="number" id="v3d-win-t" min="0" max="1" step="0.01" />
               </label>
-              <button type="button" class="btn btn-sm btn-accent v3d-insp-done" id="v3d-win-done">Done</button>
+              <div class="v3d-insp-actions">
+                <button type="button" class="btn btn-sm btn-accent v3d-insp-done" id="v3d-win-done">Done</button>
+                <button type="button" class="btn btn-sm btn-ghost v3d-insp-delete" id="v3d-win-delete" title="Remove this opening">Delete</button>
+              </div>
             </aside>
             <aside id="view3d-look-panel" class="view3d-look-panel" hidden>
               <div class="v3d-insp-head">
@@ -732,11 +735,11 @@
     }
   }
   </script>
-  <script src="walkthrough-data.js?v=deck1"></script>
-  <script src="guide-data.js?v=deck1"></script>
-  <script src="floorplan.js?v=deck1"></script>
-  <script src="wizard-data.js?v=deck1"></script>
-  <script type="module" src="view3d.js?v=deck1"></script>
-  <script src="app.js?v=deck1"></script>
+  <script src="walkthrough-data.js?v=edit3d1"></script>
+  <script src="guide-data.js?v=edit3d1"></script>
+  <script src="floorplan.js?v=edit3d1"></script>
+  <script src="wizard-data.js?v=edit3d1"></script>
+  <script type="module" src="view3d.js?v=edit3d1"></script>
+  <script src="app.js?v=edit3d1"></script>
 </body>
 </html>

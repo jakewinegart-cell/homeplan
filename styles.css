@@ -1135,7 +1135,14 @@ button { cursor: pointer; }
 }
 .view3d-edit-bar[hidden] { display: none !important; }
 .view3d-edit-bar .btn { border-radius: 999px; }
-.v3d-insp-done { margin-top: 0.25rem; width: 100%; }
+.v3d-insp-actions {
+  display: flex; gap: 0.4rem; margin-top: 0.35rem; align-items: stretch;
+}
+.v3d-insp-done { flex: 1 1 auto; width: auto; margin-top: 0; }
+.v3d-insp-delete {
+  flex: 0 0 auto; color: #8b3a3a; border-color: rgba(139, 58, 58, 0.35);
+}
+.v3d-insp-delete:hover { background: rgba(139, 58, 58, 0.1); }
 .view3d-win-inspector {
   position: absolute; top: 0.75rem; right: 0.75rem; z-index: 5;
   width: min(220px, calc(100% - 1.5rem));

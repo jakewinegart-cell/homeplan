@@ -2423,6 +2423,30 @@ function createView3D(container) {
       w: maxX - minX, d: maxY - minY };
   }
 
+  /** 3D camera focus: addition + decks/stairs. Excludes existing house so EXAMPLE
+   * decks/stairs (deck1) do not pull framing to the whole site and break wall taps. */
+  function focusBounds(plan) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, any = false;
+    const c = (x, y) => { any = true; minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); };
+    (plan.walls || []).forEach((w) => { c(w.x1, w.y1); c(w.x2, w.y2); });
+    (plan.rooms || []).forEach((r) => { c(r.x, r.y); c(r.x + r.w, r.y + r.h); });
+    (plan.decks || []).forEach((d) => {
+      if (!d) return;
+      const w = Number(d.w) || 8, depth = Number(d.d != null ? d.d : d.h) || 10;
+      c(d.x, d.y); c(d.x + w, d.y + depth);
+    });
+    (plan.stairs || []).forEach((s) => {
+      if (!s || s.x == null || s.y == null) return;
+      const hw = (Number(s.width) || 3.5) / 2;
+      const hr = (Number(s.runLength) || 10) / 2;
+      c(s.x - hw - hr, s.y - hw - hr);
+      c(s.x + hw + hr, s.y + hw + hr);
+    });
+    if (!any) return null;
+    return { minX, minY, maxX, maxY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2,
+      w: maxX - minX, d: maxY - minY };
+  }
+
   /** Modest eave only: default 12 in, clamp absurd custom values (cap 36 in). */
   function clampEaveOverhangIn(v) {
     const n = Number(v);
@@ -2906,6 +2930,10 @@ function createView3D(container) {
     grid.position.y = 0.01;
     const gMats = Array.isArray(grid.material) ? grid.material : [grid.material];
     gMats.forEach((m) => { if (m) { m.transparent = true; m.opacity = 0.28; } });
+    // Tag grid + children so opening-place raycasts can skip them (untagged
+    // GridHelper lines were stealing hits after deck1 pulled the camera back).
+    grid.userData = { type: 'grid' };
+    grid.traverse((o) => { o.userData = { type: 'grid' }; });
     rootGroup.add(grid);
 
     if (trulyEmpty) {
@@ -2917,11 +2945,15 @@ function createView3D(container) {
     let focusY = wallH * 0.4;
     let span = 24;
 
+    let focusLocalX = 0, focusLocalZ = 0;
     if (sketch) {
       const b = planBounds(plan);
       const ox = b.cx, oz = b.cy;
       planOrigin = { ox, oz };
-      span = Math.max(b.w, b.d, 14) + 8;
+      const fb = focusBounds(plan) || b;
+      span = Math.max(fb.w, fb.d, 14) + 8;
+      focusLocalX = fb.cx - ox;
+      focusLocalZ = fb.cy - oz;
 
       (plan.rooms || []).forEach((r) => {
         const fw = Math.abs(r.w), fd = Math.abs(r.h);
@@ -2953,11 +2985,12 @@ function createView3D(container) {
       if (plan.existingHouse) {
         const eh = plan.existingHouse;
         const ehH = 9;
+        const ehUd = { type: 'existingHouse', label: 'Existing house' };
         boxAt(eh.lengthFt, ehH, eh.widthFt,
           eh.x + eh.lengthFt / 2 - ox, ehH / 2, eh.y + eh.widthFt / 2 - oz,
-          houseMat, rootGroup);
+          houseMat, rootGroup, ehUd);
         addRoofGable(
-          (() => { const g = new THREE.Group(); g.position.set(eh.x + eh.lengthFt / 2 - ox, 0, eh.y + eh.widthFt / 2 - oz); rootGroup.add(g); return g; })(),
+          (() => { const g = new THREE.Group(); g.position.set(eh.x + eh.lengthFt / 2 - ox, 0, eh.y + eh.widthFt / 2 - oz); g.userData = ehUd; rootGroup.add(g); return g; })(),
           eh.lengthFt, eh.widthFt, ehH, 5 / 12, 12, mat(0x5c5048, { side: THREE.DoubleSide }), 'separate'
         );
         if (showDims) {
@@ -3444,8 +3477,12 @@ function createView3D(container) {
     applyShadowMode();
 
     if (!keepCam) {
-      if (sketch) controls.target.set(0, focusY, 0);
-      camera.position.set(span * 0.9, span * 0.65, span * 0.95);
+      if (sketch) controls.target.set(focusLocalX, focusY, focusLocalZ);
+      camera.position.set(
+        focusLocalX + span * 0.9,
+        Math.max(focusY, 2) + span * 0.55,
+        focusLocalZ + span * 0.95
+      );
     } else if (camPos && camTarget) {
       camera.position.copy(camPos);
       controls.target.copy(camTarget);
@@ -3740,6 +3777,13 @@ function createView3D(container) {
         exitEditMode();
         e.preventDefault();
       }
+      return;
+    }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedWinId) {
+      const tag = (e.target && e.target.tagName) || '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      e.preventDefault();
+      deleteSelectedOpening();
     }
   }
 
@@ -4006,9 +4050,9 @@ function createView3D(container) {
   }
 
   function onPointerUpDoc(e) {
-    // Only handle if the gesture relates to our canvas / active drag / pending exit / long-press
+    // Only handle if the gesture relates to our canvas / active drag / pending exit / long-press / add tap
     if (!renderer) return;
-    if (dragState || pendingEmptyExit || suppressOrbit || longPress || longPressShown) {
+    if (dragState || pendingEmptyExit || suppressOrbit || longPress || longPressShown || addPendingTap) {
       finishPointerUp(e);
     }
   }
@@ -4383,26 +4427,72 @@ function createView3D(container) {
     updateAddChrome();
   }
 
+  /** Types that must not win opening-place raycasts (decks/stairs/grid/eh steal hits). */
+  const PLACE_SKIP_TYPES = new Set([
+    'ground', 'roof', 'floorFraming', 'floorTruss', 'floorIBeam', 'floor', 'floorJunction',
+    'pier', 'pierFoundation', 'gradeBeam', 'grid', 'deck', 'stairs', 'stairsFromGrade',
+    'foundation', 'existingHouse', 'additionRoof', 'framingRoot',
+  ]);
+  const PLACE_PREFER_TYPES = new Set([
+    'stud', 'window', 'cornerPost', 'topPlate', 'bottomPlate', 'header', 'sill', 'cripple',
+    'finishWall', 'wall',
+  ]);
+
+  function rawTypeUserData(obj) {
+    let o = obj;
+    while (o) {
+      if (o.userData && o.userData.type) return o.userData;
+      o = o.parent;
+    }
+    return null;
+  }
+
   function pickWorldPoint(e) {
     if (!renderer || !rootGroup) return null;
     setPointerFromEvent(e);
     raycaster.setFromCamera(pointer, camera);
     const hits = raycaster.intersectObjects(rootGroup.children, true);
+    let preferred = null;
+    let anyUsable = null;
     for (let i = 0; i < hits.length; i++) {
       const h = hits[i];
       if (!h.object || h.object.isSprite) continue;
-      const ud = resolveTagUserData(h.object) || {};
-      if (ud.type === 'ground' || ud.type === 'roof' || ud.type === 'floorFraming'
-          || ud.type === 'floorTruss' || ud.type === 'floorIBeam' || ud.type === 'pier' || ud.type === 'pierFoundation'
-          || ud.type === 'gradeBeam' || ud.type === 'grid') continue;
-      return h.point.clone();
+      // Skip Line/Grid helpers even if untagged
+      if (h.object.isLine || h.object.isLineSegments) continue;
+      const ud = rawTypeUserData(h.object);
+      const type = ud && ud.type;
+      if (!type || PLACE_SKIP_TYPES.has(type)) continue;
+      if (PLACE_PREFER_TYPES.has(type)) {
+        preferred = h.point.clone();
+        break;
+      }
+      if (!anyUsable) anyUsable = h.point.clone();
     }
-    // Fallback: intersect y=wall mid plane
-    const y = ((lastStore && lastStore.wall_height_ft) || 8) * 0.45;
+    // Mid-wall plane (pier-aware) — reliable when decks/grid sit in front of walls
+    let pierLift = 0;
+    if (lastStore && lastStore.foundation_type === 'piers') {
+      pierLift = (lastStore.pier_height_ft > 0) ? lastStore.pier_height_ft : PIER_H_DEFAULT;
+    }
+    const y = (((lastStore && lastStore.wall_height_ft) || 8) * 0.45) + pierLift;
     plane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, y, 0));
-    const pt = new THREE.Vector3();
-    if (raycaster.ray.intersectPlane(plane, pt)) return pt;
-    return null;
+    const planePt = new THREE.Vector3();
+    const hasPlane = raycaster.ray.intersectPlane(plane, planePt);
+
+    const candidates = [];
+    if (preferred) candidates.push(preferred);
+    if (anyUsable) candidates.push(anyUsable);
+    if (hasPlane) candidates.push(planePt.clone());
+    if (!candidates.length) return null;
+
+    // Prefer the candidate nearest a wall (decks no longer win by being first)
+    let best = null;
+    candidates.forEach((pt) => {
+      const near = findNearestWallAt(pt.x, pt.z, 12);
+      if (!near) return;
+      if (!best || near.dist < best.dist) best = { pt, dist: near.dist };
+    });
+    if (best) return best.pt;
+    return preferred || anyUsable || (hasPlane ? planePt : null);
   }
 
   function findNearestWallAt(worldX, worldZ, maxDist) {
@@ -4441,7 +4531,7 @@ function createView3D(container) {
       // pt is world; rootGroup may be at origin — pier lift is on children, wall coords are local
       // Hit points on elevated meshes already include child.position.y but x/z match plan local
     }
-    const near = findNearestWallAt(localX, localZ, 3.2);
+    const near = findNearestWallAt(localX, localZ, 5.5);
     if (!near) {
       if (hooks.onToast) hooks.onToast('Tap on or near a wall to place');
       return false;
@@ -4511,6 +4601,30 @@ function createView3D(container) {
     if (updated && hooks.onWindowChange) hooks.onWindowChange({ ...updated }, { final: true });
   }
 
+  function deleteSelectedOpening() {
+    const id = selectedWinId;
+    if (!id) return false;
+    let ok = false;
+    if (hooks.onOpeningDelete) {
+      try { ok = !!hooks.onOpeningDelete(id); } catch (err) { console.warn(err); }
+    } else if (lastPlan && lastPlan.windows) {
+      const before = lastPlan.windows.length;
+      lastPlan.windows = lastPlan.windows.filter((w) => w.id !== id);
+      ok = lastPlan.windows.length < before;
+      if (ok) {
+        preserveCamera = true;
+        buildFromPlan(lastPlan, lastStore, { preserveCamera: true });
+      }
+    }
+    if (ok) {
+      selectWindow(null);
+      if (hooks.onToast) {
+        try { hooks.onToast('Opening removed'); } catch (_) {}
+      }
+    }
+    return ok;
+  }
+
   function wireInspector() {
     if (!inspectorEl) return;
     const bind = (id, prop) => {
@@ -4548,6 +4662,8 @@ function createView3D(container) {
     if (closeBtn) closeBtn.addEventListener('click', () => selectWindow(null));
     const doneBtn = inspectorEl.querySelector('#v3d-win-done');
     if (doneBtn) doneBtn.addEventListener('click', () => selectWindow(null));
+    const delBtn = inspectorEl.querySelector('#v3d-win-delete');
+    if (delBtn) delBtn.addEventListener('click', () => deleteSelectedOpening());
   }
 
   function openingEditLabel(win) {
@@ -4879,6 +4995,7 @@ function createView3D(container) {
     debugHidePartTag: hidePartTag,
     setAddMode,
     getAddMode: () => addMode,
+    deleteSelectedOpening,
     setAddPreset: (kind, preset) => {
       if (kind === 'door') addPresetDoor = Object.assign({}, addPresetDoor, preset || {});
       else addPresetWin = Object.assign({}, addPresetWin, preset || {});
