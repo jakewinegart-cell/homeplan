@@ -8,7 +8,9 @@
  * Interior P0: warm ceiling/room fills, painted finish + baseboard/ceiling/floor
  * when Studs OFF, fixture face polish (cabinets/sink/outlets).
  * Floor framing ON: omit opaque finish deck so open-web floor trusses (~10 in labeled,
-* visual ~13 in) read from interior low/across — not flat top-chord planks.
+ * visual ~13 in) read from interior low/across — not flat top-chord planks.
+ * Floor framing span = additionBounds only (wall plates); no overshoot past exterior walls.
+ * Roof outline = addition exterior (bounds+WALL_THICK) + clamped eave; plate height roof3.
  *
  * Realism2: richer procedural albedo+bump (clapboard/brick/shingles), lumber grain,
  * foundation/ground maps, fascia/soffit eave edge, stronger late-morning sun + soft
@@ -1333,19 +1335,28 @@ function createView3D(container) {
 
     // Span the LONGER plan dim so looking across the short room span (typical
     // interior) faces truss sides (chords + webs), not just ends / flat planks.
+    // Footprint (lenX×lenZ) MUST be the addition wall-plate rectangle only —
+    // callers pass additionBounds, never bloated planBounds.
     const spanAlongX = w >= d;
     const placeRun = spanAlongX ? d : w; // place trusses along the short axis
     const n = Math.max(2, Math.round(placeRun / oc) + 1);
 
-    const inset = Math.min(0.35, Math.min(w, d) * 0.04);
+    // Keep every chord/web at or inside the footprint edge. Outer face of rim
+    // girders sits on the plate line; main spans tuck inside. Modest bearing on
+    // plates is fine; no long overshoot past remodel exterior walls.
+    const halfChord = chordW / 2;
+    const edgeClear = halfChord; // rim outer face on footprint edge
+    const spanClear = Math.max(edgeClear, Math.min(0.35, Math.min(w, d) * 0.04));
+    const spanLenX = Math.max(1, w - spanClear * 2);
+    const spanLenZ = Math.max(1, d - spanClear * 2);
     for (let i = 0; i < n; i++) {
       const t = n === 1 ? 0.5 : i / (n - 1);
       if (spanAlongX) {
-        const z = cz - d / 2 + inset + t * (d - inset * 2);
-        addFloorTruss(cx, z, Math.max(1, w - inset * 2), 0);
+        const z = cz - d / 2 + spanClear + t * (d - spanClear * 2);
+        addFloorTruss(cx, z, spanLenX, 0);
       } else {
-        const x = cx - w / 2 + inset + t * (w - inset * 2);
-        addFloorTruss(x, cz, Math.max(1, d - inset * 2), Math.PI / 2);
+        const x = cx - w / 2 + spanClear + t * (w - spanClear * 2);
+        addFloorTruss(x, cz, spanLenZ, Math.PI / 2);
       }
     }
 
@@ -1365,11 +1376,13 @@ function createView3D(container) {
         });
       }
     }
-    // Rim girders on all four edges
-    addGirderTruss(cx, cz - d / 2 + inset * 0.5, Math.max(1, w - inset), 0);
-    addGirderTruss(cx, cz + d / 2 - inset * 0.5, Math.max(1, w - inset), 0);
-    addGirderTruss(cx - w / 2 + inset * 0.5, cz, Math.max(1, d - inset), Math.PI / 2);
-    addGirderTruss(cx + w / 2 - inset * 0.5, cz, Math.max(1, d - inset), Math.PI / 2);
+    // Rim girders: outer chord face on footprint edge (not outside)
+    const girderLenX = Math.max(1, w - edgeClear * 2);
+    const girderLenZ = Math.max(1, d - edgeClear * 2);
+    addGirderTruss(cx, cz - d / 2 + edgeClear, girderLenX, 0);
+    addGirderTruss(cx, cz + d / 2 - edgeClear, girderLenX, 0);
+    addGirderTruss(cx - w / 2 + edgeClear, cz, girderLenZ, Math.PI / 2);
+    addGirderTruss(cx + w / 2 - edgeClear, cz, girderLenZ, Math.PI / 2);
 
     return wrap;
   }
@@ -2960,12 +2973,11 @@ function createView3D(container) {
       focusY = maxWallH * 0.4;
 
       if (store.show_roof !== false) {
-        // Roof footprint = addition rooms/walls only (existing house keeps its own roof).
-        // Extra size beyond walls comes solely from eave_overhang_in (modest, clamped).
-        // Vertical: eave/plate at maxWallH (addition top plate); pier lift raises group later.
+        // Roof footprint = addition exterior wall outline only (existing house keeps its roof).
+        // additionBounds = wall centerlines; +WALL_THICK → outer stud/plate faces (corners flush).
+        // Extra size beyond that comes solely from eave_overhang_in (modest, clamped ≤36 in).
+        // Vertical (roof3): underside at wall line = top plate; tip may drop along pitch.
         const ab = additionBounds(plan) || b;
-        // Bounds follow wall centerlines; expand by WALL_THICK so outer stud faces
-        // stay at/inside the wall-line bearing (not in the dropping overhang zone).
         const roofW = Math.max(ab.w, 1) + WALL_THICK;
         const roofD = Math.max(ab.d, 1) + WALL_THICK;
         const gRoof = new THREE.Group();
@@ -2994,23 +3006,32 @@ function createView3D(container) {
         boxAt(2, 0.15, 2, 0, maxWallH + 1.5, 0, glassMat, rootGroup);
       }
 
-      // Conceptual floor framing / trusses under floor plane (EXAMPLE spacing)
+      // Conceptual floor framing / trusses under floor plane (EXAMPLE spacing).
+      // Clip strictly to addition wall-plate footprint — NOT planBounds (that
+      // includes existing house / eaves and made beams overshoot exterior walls).
       if (showFloorFraming) {
-        const bb = planBounds(plan);
-        if (bb) {
-          addFloorFraming(0, 0, Math.max(bb.w, 6), Math.max(bb.d, 6), rootGroup, lumberMat, {
-            topY: -0.02,
-          });
+        const ab = additionBounds(plan);
+        if (ab) {
+          addFloorFraming(
+            ab.cx - ox, ab.cy - oz,
+            Math.max(ab.w, 2), Math.max(ab.d, 2),
+            rootGroup, lumberMat, { topY: -0.02 }
+          );
         }
       }
 
-      // Foundation under sketch footprint (reveal / stem / piers)
+      // Foundation under addition footprint (not planBounds / existing house)
       if (store.show_foundation !== false) {
         const ft = store.foundation_type || 'slab';
         const bb = planBounds(plan);
-        if (bb && ft === 'piers') {
+        const abFound = additionBounds(plan) || bb;
+        const fcx = abFound ? (abFound.cx - ox) : 0;
+        const fcz = abFound ? (abFound.cy - oz) : 0;
+        const fW = abFound ? Math.max(abFound.w, 4) : (bb ? Math.max(bb.w, 4) : 6);
+        const fD = abFound ? Math.max(abFound.d, 4) : (bb ? Math.max(bb.d, 4) : 6);
+        if (abFound && ft === 'piers') {
           const pierH = store.pier_height_ft > 0 ? store.pier_height_ft : PIER_H_DEFAULT;
-          addPierFoundation(0, 0, Math.max(bb.w, 6), Math.max(bb.d, 6), pierH, foundMat, beamMat, rootGroup, {
+          addPierFoundation(fcx, fcz, fW, fD, pierH, foundMat, beamMat, rootGroup, {
             walls: plan.walls || [],
             ox: ox,
             oz: oz,
@@ -3027,25 +3048,25 @@ function createView3D(container) {
             if (ch.userData && ch.userData.type === 'ground') return;
             ch.position.y += pierH;
           });
-        } else if (bb && ft === 'slab') {
+        } else if (abFound && ft === 'slab') {
           // Framing on: thin pad below trusses so members read from above.
           // Framing off: normal ~9 in reveal under finish floor.
           if (showFloorFraming) {
             const padH = 0.2;
             const beamBot = -0.02 - FLOOR_IBEAM_H;
-            boxAt(Math.max(bb.w, 4) + 0.5, padH, Math.max(bb.d, 4) + 0.5,
-              0, beamBot - padH / 2 - 0.02, 0, foundMat, rootGroup,
+            boxAt(fW + 0.5, padH, fD + 0.5,
+              fcx, beamBot - padH / 2 - 0.02, fcz, foundMat, rootGroup,
               { type: 'foundation', label: 'Foundation' });
           } else {
-            boxAt(Math.max(bb.w, 4) + 0.5, FOUND_REVEAL_SLAB, Math.max(bb.d, 4) + 0.5,
-              0, -FOUND_REVEAL_SLAB / 2, 0, foundMat, rootGroup,
+            boxAt(fW + 0.5, FOUND_REVEAL_SLAB, fD + 0.5,
+              fcx, -FOUND_REVEAL_SLAB / 2, fcz, foundMat, rootGroup,
               { type: 'foundation', label: 'Foundation' });
           }
-        } else if (bb && ft === 'crawl') {
+        } else if (abFound && ft === 'crawl') {
           // Hollow stem ring — crawl volume open so floor trusses / joists read
-          addStemWallRing(0, 0, Math.max(bb.w, 4) + 0.5, Math.max(bb.d, 4) + 0.5, 2.5, -2.5, foundMat, rootGroup);
-        } else if (bb && ft === 'basement') {
-          addStemWallRing(0, 0, Math.max(bb.w, 4) + 0.5, Math.max(bb.d, 4) + 0.5, 8, -8, foundMat, rootGroup);
+          addStemWallRing(fcx, fcz, fW + 0.5, fD + 0.5, 2.5, -2.5, foundMat, rootGroup);
+        } else if (abFound && ft === 'basement') {
+          addStemWallRing(fcx, fcz, fW + 0.5, fD + 0.5, 8, -8, foundMat, rootGroup);
         }
       }
     } else {
@@ -3212,9 +3233,11 @@ function createView3D(container) {
       }
 
       if (store.show_roof !== false) {
+        // Exterior wall footprint (centerline + WALL_THICK) + modest clamped eave inside addRoof
         const g = new THREE.Group();
         g.position.set(ax, floorY, az);
-        addRoof(g, addL, addW, wallH, pitch, eaveIn, roofMat, store.roof_tie_in, roofStyle);
+        g.userData = { type: 'additionRoof' };
+        addRoof(g, addL + WALL_THICK, addW + WALL_THICK, wallH, pitch, eaveIn, roofMat, store.roof_tie_in, roofStyle);
         rootGroup.add(g);
       }
 
