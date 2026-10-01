@@ -2800,7 +2800,7 @@ function createView3D(container) {
     // Readable 2×6 lumber (match deck boardT / boardW)
     const boardT = 1.5 / 12; // ~1.5 in thick
     const boardFace = 5.5 / 12; // ~5.5 in face (run depth per board)
-    const boardGap = 0.06; // ~3/4 in gap so twin 2×6s read clearly in 3D
+    const boardGap = 0.015; // ~3/16 in tight reveal so twin 2×6s read like real decking
     // Stringers ≈ 2×12 laid on edge (readable, not stick-thin)
     const strThick = 1.75 / 12; // ~1.75 in face
     const strDepth = 11.25 / 12; // ~11.25 in 2×12 depth
