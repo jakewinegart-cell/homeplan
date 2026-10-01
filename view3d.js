@@ -2373,6 +2373,18 @@ function createView3D(container) {
     return !!(plan && ((plan.walls && plan.walls.length) || (plan.rooms && plan.rooms.length)));
   }
 
+  /** Decks / stairs alone are real Plan content — must not fall through to parametric house. */
+  function planHasOutdoor(plan) {
+    return !!(plan && (
+      ((plan.decks || []).length > 0) ||
+      ((plan.stairs || []).length > 0)
+    ));
+  }
+
+  function planHasAnyGeometry(plan) {
+    return !!(planHasSketch(plan) || planHasOutdoor(plan) || (plan && plan.existingHouse));
+  }
+
   function planBounds(plan) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, any = false;
     const c = (x, y) => { any = true; minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); };
@@ -2897,13 +2909,14 @@ function createView3D(container) {
     }
 
     const sketch = planHasSketch(plan);
-    const remodel = !!store.remodel_only;
-    const trulyEmpty = !sketch && remodel;
+    // Empty plan (after Clear, or never drawn) must NOT invent a parametric ghost house.
+    // Decks/stairs/existingHouse alone still count as geometry (see else branch).
+    const trulyEmpty = !planHasAnyGeometry(plan);
     if (emptyEl) {
       emptyEl.hidden = !trulyEmpty;
       if (trulyEmpty) {
         emptyEl.querySelector('p').textContent =
-          'Draw rooms or walls on the Plan tab for a remodel preview — or switch project type to addition in Guidance.';
+          'Plan is empty. Draw rooms/walls, place a Deck or Stairs, or add an Existing house on the Plan tab — 3D only shows what you drew (Clear wipes the old house).';
       }
     }
     if (canvasHost) canvasHost.style.opacity = trulyEmpty ? '0.3' : '1';
@@ -3285,183 +3298,65 @@ function createView3D(container) {
         }
       }
     } else {
-      // Parametric addition massing
-      const L = store.footprint_l_ft || 12;
-      const W = store.footprint_w_ft || 16;
-      const side = store.attach_side || 'back';
-      span = Math.max(L, W, 20) + 30;
+      // No walls/rooms: show only what Plan actually has (decks / stairs / existing house).
+      // Do NOT invent a parametric 40×30 house + addition from Guidance defaults.
+      const b = planBounds(plan);
+      if (!b) {
+        onResize();
+        updateInspector(null);
+        return;
+      }
+      const ox = b.cx, oz = b.cy;
+      planOrigin = { ox, oz };
+      const fb = focusBounds(plan) || b;
+      span = Math.max(fb.w, fb.d, 14) + 8;
+      focusLocalX = fb.cx - ox;
+      focusLocalZ = fb.cy - oz;
+      focusY = 2.5;
 
-      const eh = plan.existingHouse;
-      const houseL = eh ? eh.lengthFt : 40, houseW = eh ? eh.widthFt : 30, houseH = 9;
-      boxAt(houseL, houseH, houseW, 0, houseH / 2, 0, houseMat, rootGroup);
-      addRoofGable(rootGroup, houseL, houseW, houseH, 5 / 12, 12, mat(0x5c5048, { side: THREE.DoubleSide }), 'separate');
+      if (plan.existingHouse) {
+        const eh = plan.existingHouse;
+        const ehH = 9;
+        const ehUd = { type: 'existingHouse', label: 'Existing house' };
+        boxAt(eh.lengthFt, ehH, eh.widthFt,
+          eh.x + eh.lengthFt / 2 - ox, ehH / 2, eh.y + eh.widthFt / 2 - oz,
+          houseMat, rootGroup, ehUd);
+        addRoofGable(
+          (() => { const g = new THREE.Group(); g.position.set(eh.x + eh.lengthFt / 2 - ox, 0, eh.y + eh.widthFt / 2 - oz); g.userData = ehUd; rootGroup.add(g); return g; })(),
+          eh.lengthFt, eh.widthFt, ehH, 5 / 12, 12, mat(0x5c5048, { side: THREE.DoubleSide }), 'separate'
+        );
+        if (showDims) {
+          makeLabel('Existing · ' + fmtFt(eh.lengthFt) + ' × ' + fmtFt(eh.widthFt),
+            eh.x + eh.lengthFt / 2 - ox, ehH + 1.2, eh.y + eh.widthFt / 2 - oz, labelGroup, 3.5);
+        }
+        focusY = ehH * 0.4;
+      }
 
-      let ax = 0, az = 0;
-      let addL = L, addW = W;
-      if (side === 'back') { ax = 0; az = houseW / 2 + addW / 2; }
-      else if (side === 'front') { ax = 0; az = -(houseW / 2 + addW / 2); }
-      else if (side === 'left') { ax = -(houseL / 2 + addW / 2); az = 0; addL = W; addW = L; }
-      else if (side === 'right') { ax = houseL / 2 + addW / 2; az = 0; addL = W; addW = L; }
-      else { ax = houseL / 2 + addW / 4; az = houseW / 2 + addW / 4; }
+      addDecksFromPlan(plan, ox, oz, rootGroup, {
+        boardMat: floorMat,
+        joistMat: lumberMat,
+      });
 
+      // Lone deck/stairs: modest grade-to-deck rise (no addition foundation required)
+      let stairRise = 0.75;
       const ft = store.foundation_type || 'slab';
-      let floorY = store.floor_align === 'no' ? 0.5 : 0;
       if (ft === 'piers') {
-        floorY = (store.pier_height_ft > 0 ? store.pier_height_ft : PIER_H_DEFAULT)
-          + (store.floor_align === 'no' ? 0.25 : 0);
-      }
-
-      if (store.show_foundation !== false) {
-        if (ft === 'piers') {
-          const pierH = store.pier_height_ft > 0 ? store.pier_height_ft : PIER_H_DEFAULT;
-          addPierFoundation(ax, az, addL, addW, pierH, foundMat, beamMat, rootGroup, {
-            spacingFt: store.pier_spacing_ft,
-            diameterIn: store.pier_diameter_in,
-            pierCount: store.pier_count,
-          });
-        } else if (ft === 'slab') {
-          // Framing on: thin pad under trusses (readable from above).
-          // Framing off: 4–12 in reveal below cladding line + finish floor.
-          if (showFloorFraming) {
-            const padH = 0.2;
-            const beamBot = floorY - 0.02 - FLOOR_IBEAM_H;
-            boxAt(addL + 0.5, padH, addW + 0.5, ax, beamBot - padH / 2 - 0.02, az, foundMat, rootGroup,
-              { type: 'foundation', label: 'Foundation' });
-          } else {
-            boxAt(addL + 0.5, FOUND_REVEAL_SLAB, addW + 0.5, ax, floorY - FOUND_REVEAL_SLAB / 2, az, foundMat, rootGroup,
-              { type: 'foundation', label: 'Foundation' });
-          }
-        } else if (ft === 'crawl') {
-          addStemWallRing(ax, az, addL + 0.5, addW + 0.5, 2.5, floorY - 2.5, foundMat, rootGroup);
-        } else if (ft === 'basement') {
-          addStemWallRing(ax, az, addL + 0.5, addW + 0.5, 8, floorY - 8, foundMat, rootGroup);
-        }
-      }
-
-      // Opaque finish flooring hides trusses from above — omit when Floor framing is on.
-      // Slab keeps thin concrete foundation reveal below; fixtures stay at same Y (beam plane).
-      if (!showFloorFraming) {
-        const fmesh = boxAt(addL, 0.15, addW, ax, floorY + 0.08, az, floorMat, rootGroup);
-        if (fmesh) {
-          fmesh.userData = { type: 'floor', label: 'Floor' };
-          applyPlanarXZUVs(fmesh, 0.4);
-        }
-      }
-      if (showFloorFraming) {
-        // World-space under elevated floor (respects pier floorY)
-        const fg = new THREE.Group();
-        fg.position.set(ax, floorY, az);
-        rootGroup.add(fg);
-        addFloorFraming(0, 0, addL, addW, fg, lumberMat, { topY: -0.02 });
-      }
-      lightCenters.push({
-        x: ax, y: floorY + wallH * 0.88, z: az,
-        radius: Math.max(addL, addW) * 0.55,
-      });
-
-      const x0 = ax - addL / 2, x1 = ax + addL / 2;
-      const z0 = az - addW / 2, z1 = az + addW / 2;
-      const addGroup = new THREE.Group();
-      addGroup.position.y = floorY;
-      rootGroup.add(addGroup);
-      let attachIdx = 0;
-      if (side === 'back') attachIdx = 0;
-      if (side === 'front') attachIdx = 2;
-      if (side === 'left') attachIdx = 1;
-      if (side === 'right') attachIdx = 3;
-      const segs = [
-        [x0, z0, x1, z0], [x1, z0, x1, z1], [x1, z1, x0, z1], [x0, z1, x0, z0],
-      ];
-      const corners = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]];
-      if (showStuds) {
-        // Open stud framing ring + corner posts (flush plates/posts)
-        corners.forEach(([cx, cz]) => cornerPostAt(cx, cz, wallH, frameWallMat, addGroup));
-        segs.forEach((s) => {
-          buildStudWall(s[0], s[1], s[2], s[3], wallH, [], frameWallMat, addGroup);
+        stairRise = store.pier_height_ft > 0 ? store.pier_height_ft : PIER_H_DEFAULT;
+        // Elevate deck platform with pier height so it matches pier-capable sites
+        [...rootGroup.children].forEach((ch) => {
+          if (!ch || !ch.userData) return;
+          if (ch.userData.type === 'deck') ch.position.y += stairRise;
+          if (ch.userData.type === 'existingHouse') ch.position.y += stairRise;
         });
-      } else {
-        // Continuous extrude ring for parametric addition (flush corners)
-        extrudeRoomRing(x0, z0, addL, addW, wallH, wallMat, addGroup);
-        if (wantsCornerBoards(cladKey)) {
-          const cbMat = cornerBoardMaterial();
-          const half = WALL_THICK / 2;
-          [
-            [x0 - half, z0 - half],
-            [x1 + half, z0 - half],
-            [x1 + half, z1 + half],
-            [x0 - half, z1 + half],
-          ].forEach(([cx, cz]) => cornerBoardAt(cx, cz, wallH, addGroup, cbMat));
-        }
+      } else if (ft === 'crawl') {
+        stairRise = 2.5;
       }
-      const as = segs[attachIdx];
-      // Attach highlight — thin finished strip even in stud mode so connection reads
-      if (!showStuds) {
-        wallSegSolid(as[0], as[1], as[2], as[3], wallH, attachMat, addGroup, 0);
-        // Paint / ceiling / baseboard in addition local space (floorY applied via addGroup)
-        addRoomInteriorFinish(x0, z0, addL, addW, wallH, addGroup, interiorMats);
-      } else {
-        // Subtle attach tint as thinner overlay on the attach plate line
-        lumberAlong(as[0], as[1], as[2], as[3], 0.05, 0.95, wallH * 0.35, wallH * 0.55, attachMat, addGroup, WALL_THICK + 0.06);
-      }
-
-      if (showDims) {
-        makeLabel(fmtFt(addL) + ' × ' + fmtFt(addW), ax, floorY + 1.0, az, labelGroup, 3.0);
-        makeLabel(fmtFt(wallH) + ' H', ax + addL / 2 + 0.8, floorY + wallH / 2, az, labelGroup, 2.2);
-      }
-
-      if (store.connect_type === 'open_wall' || store.has_large_opening) {
-        const ow = store.has_large_opening ? (store.large_opening_w_ft || 8) * 12 : Math.min(addL, 8) * 12;
-        openingOnWall(as[0], as[1], as[2], as[3], wallH, ow, (store.large_opening_h_ft || 6.67) * 12, 0, glassMat, frameMat, addGroup);
-      } else {
-        openingOnWall(as[0], as[1], as[2], as[3], wallH,
-          store.opening_preset_door_w_in || 36, store.opening_preset_door_h_in || 80, 0, glassMat, frameMat, addGroup);
-      }
-
-      const exterior = segs.filter((_, i) => i !== attachIdx);
-      const doors = store.door_types || [];
-      let doorCount = 0;
-      if (doors.includes('one_entry')) doorCount = 1;
-      if (doors.includes('two_plus') || doors.includes('sliding') || doors.includes('french')) doorCount = Math.max(doorCount, doors.includes('two_plus') ? 2 : 1);
-      if (!doors.length || doors.includes('unsure')) doorCount = 1;
-      if (doors.includes('none')) doorCount = 0;
-
-      for (let i = 0; i < doorCount && i < exterior.length; i++) {
-        const s = exterior[i];
-        let dw = store.opening_preset_door_w_in || 36;
-        let dh = store.opening_preset_door_h_in || 80;
-        if (doors.includes('sliding') || doors.includes('french')) { dw = 72; dh = 84; }
-        openingOnWall(s[0], s[1], s[2], s[3], wallH, dw, dh, 0, glassMat, frameMat, addGroup);
-      }
-
-      let winLeft = store.window_count || 0;
-      exterior.forEach((s) => {
-        if (winLeft <= 0) return;
-        openingOnWall(s[0], s[1], s[2], s[3], wallH,
-          store.opening_preset_win_w_in || 36, store.opening_preset_win_h_in || 48, 2.5, glassMat, frameMat, addGroup);
-        winLeft--;
+      addStairsFromPlan(plan, ox, oz, rootGroup, stairRise, {
+        treadMat: floorMat,
+        stringerMat: lumberMat,
       });
-      while (winLeft > 0 && exterior.length) {
-        const s = exterior[winLeft % exterior.length];
-        openingOnWall(s[0], s[1], s[2], s[3], wallH,
-          store.opening_preset_win_w_in || 36, store.opening_preset_win_h_in || 48, 2.5, glassMat, frameMat, addGroup);
-        winLeft--;
-      }
 
-      if (store.show_roof !== false) {
-        // Exterior wall footprint (centerline + WALL_THICK) + modest clamped eave inside addRoof
-        const g = new THREE.Group();
-        g.position.set(ax, floorY, az);
-        g.userData = { type: 'additionRoof' };
-        addRoof(g, addL + WALL_THICK, addW + WALL_THICK, wallH, pitch, eaveIn, roofMat, store.roof_tie_in, roofStyle);
-        rootGroup.add(g);
-      }
-
-      if (store.skylights) {
-        boxAt(2, 0.15, 2, ax, floorY + wallH + 2, az, glassMat, rootGroup);
-      }
-
-      if (!keepCam) controls.target.set(ax / 2, floorY + wallH * 0.4, az / 2);
-      focusY = floorY + wallH * 0.4;
+      if (!keepCam) controls.target.set(focusLocalX, focusY, focusLocalZ);
     }
 
     // Warm interior fills at room / footprint centers near ceiling (capped; mobile-dimmed)

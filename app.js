@@ -378,6 +378,17 @@
         schedule3DRebuild();
         walkthroughDirty = true;
       },
+      onCleared() {
+        // Clear must not leave a stale localStorage project that reappears on reload
+        // or feeds 3D with an old existingHouse / rooms payload.
+        try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+        if (els.saveStatus) els.saveStatus.textContent = 'Cleared — browser save wiped';
+        existingHousePrompted = false;
+        refreshExistingHouseChrome();
+        planDirtyFor3d = true;
+        schedule3DRebuild();
+        showToast('Plan cleared · saved project removed');
+      },
       onEmptyChange(empty) {
         // Once dismissed, never auto-reshow while empty (was blocking phones).
         if (tipDismissed || !empty) els.emptyTip.classList.add('hidden');

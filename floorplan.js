@@ -303,6 +303,7 @@
         roofPitch: state.roofPitch,
         roofPitchLabel: state.roofPitchLabel,
         roofStyle: state.roofStyle,
+        existingHouse: state.existingHouse,
       }));
       if (state.history.length > 40) state.history.shift();
     }
@@ -320,14 +321,19 @@
       state.roofPitch = prev.roofPitch != null ? prev.roofPitch : null;
       state.roofPitchLabel = prev.roofPitchLabel || null;
       state.roofStyle = prev.roofStyle || null;
+      state.existingHouse = prev.existingHouse ? { ...prev.existingHouse } : null;
       state.selected = null;
       state.drawing = null;
       notify();
       draw();
+      if (hooks.onExistingHouseChange) hooks.onExistingHouseChange(state.existingHouse);
     }
 
     function clearAll() {
-      if (!state.walls.length && !state.rooms.length && !state.windows.length && !state.fixtures.length && !state.decks.length && !state.stairs.length && !state.rooflines.length) return;
+      const alreadyEmpty = !state.walls.length && !state.rooms.length && !state.windows.length
+        && !state.fixtures.length && !state.decks.length && !state.stairs.length
+        && !state.rooflines.length && !state.existingHouse;
+      if (alreadyEmpty) return;
       pushHistory();
       state.walls = [];
       state.rooms = [];
@@ -339,16 +345,18 @@
       state.roofPitch = null;
       state.roofPitchLabel = null;
       state.roofStyle = null;
+      state.existingHouse = null; // wipe locked house so 3D cannot keep a ghost footprint
       state.selected = null;
       state.drawing = null;
       notify();
       draw();
+      if (hooks.onCleared) hooks.onCleared();
     }
 
     function setTool(tool) {
       if (tool === 'undo') { undo(); return; }
       if (tool === 'clear') {
-        if (confirm('Clear the entire floor plan?')) clearAll();
+        if (confirm('Clear the entire floor plan? This also removes the existing-house footprint and unsaved browser save.')) clearAll();
         return;
       }
       // Freehand roofline demoted — Roof toolbar opens the pitch/style picker instead
@@ -1390,7 +1398,9 @@
     }
 
     function isEmpty() {
-      return !state.walls.length && !state.rooms.length && !state.windows.length && !state.fixtures.length && !state.decks.length && !state.stairs.length && !state.rooflines.length;
+      return !state.walls.length && !state.rooms.length && !state.windows.length
+        && !state.fixtures.length && !state.decks.length && !state.stairs.length
+        && !state.rooflines.length && !state.existingHouse;
     }
 
     // ---- drawing ----
