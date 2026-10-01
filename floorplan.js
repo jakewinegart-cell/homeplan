@@ -1,6 +1,6 @@
 /**
  * HomePlan floor-plan canvas
- * Tools: select, wall, room, window, fixtures (counter/cabinet/sink/outlet) + Roof picker
+ * Tools: select, wall, room, window, fixtures, deck, stairs + Roof picker
  */
 (function (global) {
   'use strict';
@@ -213,6 +213,52 @@
     return out;
   }
 
+
+  // ---- Decks & Stairs (EXAMPLE massing — not engineered) ----
+  const DEFAULT_DECK_W_FT = 8;
+  const DEFAULT_DECK_D_FT = 10;
+  const DEFAULT_STAIR_WIDTH_FT = 3.5;
+  const DEFAULT_STAIR_RUN_FT = 10;
+  const DECK_MIN_FT = 2;
+  const STAIR_MIN_W_FT = 2;
+  const STAIR_MIN_RUN_FT = 3;
+
+  function normalizeDeck(d) {
+    if (!d) return null;
+    const w = Number(d.w);
+    const depth = Number(d.d != null ? d.d : d.h);
+    return {
+      id: d.id || uid('deck'),
+      x: Number(d.x) || 0,
+      y: Number(d.y) || 0,
+      w: (isFinite(w) && w > 0) ? w : DEFAULT_DECK_W_FT,
+      d: (isFinite(depth) && depth > 0) ? depth : DEFAULT_DECK_D_FT,
+      rotation: (d.rotation != null && isFinite(Number(d.rotation))) ? Number(d.rotation) : 0,
+      label: d.label || 'Deck',
+    };
+  }
+
+  function normalizeStairs(s) {
+    if (!s) return null;
+    const width = Number(s.width);
+    const run = Number(s.runLength != null ? s.runLength : s.run);
+    let rot = (s.rotation != null && isFinite(Number(s.rotation))) ? Number(s.rotation) : 0;
+    // Snap near cardinals for cleaner plan symbol
+    const snap90 = Math.round(rot / (Math.PI / 2)) * (Math.PI / 2);
+    if (Math.abs(rot - snap90) < 0.2) rot = snap90;
+    return {
+      id: s.id || uid('stair'),
+      x: Number(s.x) || 0,
+      y: Number(s.y) || 0,
+      width: (isFinite(width) && width > 0) ? width : DEFAULT_STAIR_WIDTH_FT,
+      runLength: (isFinite(run) && run > 0) ? run : DEFAULT_STAIR_RUN_FT,
+      rotation: rot,
+      label: s.label || 'Stairs',
+      attachWallId: s.attachWallId || null,
+      attachT: (s.attachT != null && isFinite(Number(s.attachT))) ? Number(s.attachT) : null,
+    };
+  }
+
   function createFloorPlan(canvas, hooks) {
     const ctx = canvas.getContext('2d');
     const state = {
@@ -220,6 +266,8 @@
       rooms: [],      // {id, name, x,y,w,h}  w/h in ft
       windows: [],    // {id, wallId, t, widthFt, heightFt, sillFt}
       fixtures: [],   // counters/cabinets/sinks/outlets — see FIXTURE_DEFS
+      decks: [],      // EXAMPLE exterior decks {id,x,y,w,d,rotation}
+      stairs: [],     // EXAMPLE straight-run stairs {id,x,y,width,runLength,rotation}
       activeFixtureId: 'counter_base',
       activeWinPresetId: '3x4',
       rooflines: [],  // {id, points:[{x,y},...]} legacy freehand ridges
@@ -249,6 +297,8 @@
         rooms: state.rooms,
         windows: state.windows,
         fixtures: state.fixtures,
+        decks: state.decks,
+        stairs: state.stairs,
         rooflines: state.rooflines,
         roofPitch: state.roofPitch,
         roofPitchLabel: state.roofPitchLabel,
@@ -264,6 +314,8 @@
       state.rooms = prev.rooms;
       state.windows = prev.windows;
       state.fixtures = (prev.fixtures || []).map(normalizeFixture).filter(Boolean);
+      state.decks = (prev.decks || []).map(normalizeDeck).filter(Boolean);
+      state.stairs = (prev.stairs || []).map(normalizeStairs).filter(Boolean);
       state.rooflines = prev.rooflines;
       state.roofPitch = prev.roofPitch != null ? prev.roofPitch : null;
       state.roofPitchLabel = prev.roofPitchLabel || null;
@@ -275,12 +327,14 @@
     }
 
     function clearAll() {
-      if (!state.walls.length && !state.rooms.length && !state.windows.length && !state.fixtures.length && !state.rooflines.length) return;
+      if (!state.walls.length && !state.rooms.length && !state.windows.length && !state.fixtures.length && !state.decks.length && !state.stairs.length && !state.rooflines.length) return;
       pushHistory();
       state.walls = [];
       state.rooms = [];
       state.windows = [];
       state.fixtures = [];
+      state.decks = [];
+      state.stairs = [];
       state.rooflines = [];
       state.roofPitch = null;
       state.roofPitchLabel = null;
@@ -422,15 +476,27 @@
     }
 
     function hitTestResizeHandle(e) {
-      if (!state.selected || state.selected.type !== 'room') return null;
-      const room = state.rooms.find((r) => r.id === state.selected.id);
-      if (!room) return null;
+      if (!state.selected) return null;
       const sp = screenFromEvent(e);
       const half = HANDLE_HIT_PX / 2;
-      for (const h of getRoomHandles(room)) {
-        const s = toScreen(h.x, h.y);
-        if (Math.abs(sp.x - s.x) <= half && Math.abs(sp.y - s.y) <= half) {
-          return { handle: h.id, roomId: room.id };
+      if (state.selected.type === 'room') {
+        const room = state.rooms.find((r) => r.id === state.selected.id);
+        if (!room) return null;
+        for (const h of getRoomHandles(room)) {
+          const s = toScreen(h.x, h.y);
+          if (Math.abs(sp.x - s.x) <= half && Math.abs(sp.y - s.y) <= half) {
+            return { handle: h.id, roomId: room.id, kind: 'room' };
+          }
+        }
+      }
+      if (state.selected.type === 'deck') {
+        const deck = state.decks.find((d) => d.id === state.selected.id);
+        if (!deck) return null;
+        for (const h of getDeckHandles(deck)) {
+          const s = toScreen(h.x, h.y);
+          if (Math.abs(sp.x - s.x) <= half && Math.abs(sp.y - s.y) <= half) {
+            return { handle: h.id, deckId: deck.id, kind: 'deck' };
+          }
         }
       }
       return null;
@@ -785,10 +851,138 @@
     }
 
 
+
+    function pointInDeck(p, d) {
+      if (!d) return false;
+      return p.x >= d.x && p.x <= d.x + d.w && p.y >= d.y && p.y <= d.y + d.d;
+    }
+
+    function stairCorners(st) {
+      const hw = (st.width || DEFAULT_STAIR_WIDTH_FT) / 2;
+      const hr = (st.runLength || DEFAULT_STAIR_RUN_FT) / 2;
+      const ang = st.rotation || 0;
+      const c = Math.cos(ang), s = Math.sin(ang);
+      // Local: width along X, run along Y (low at -hr, high/attach at +hr)
+      return [
+        { x: st.x + (-hw) * c - (-hr) * s, y: st.y + (-hw) * s + (-hr) * c },
+        { x: st.x + ( hw) * c - (-hr) * s, y: st.y + ( hw) * s + (-hr) * c },
+        { x: st.x + ( hw) * c - ( hr) * s, y: st.y + ( hw) * s + ( hr) * c },
+        { x: st.x + (-hw) * c - ( hr) * s, y: st.y + (-hw) * s + ( hr) * c },
+      ];
+    }
+
+    function pointInStairs(p, st) {
+      if (!st) return false;
+      const hw = (st.width || DEFAULT_STAIR_WIDTH_FT) / 2;
+      const hr = (st.runLength || DEFAULT_STAIR_RUN_FT) / 2;
+      const ang = st.rotation || 0;
+      const c = Math.cos(-ang), s = Math.sin(-ang);
+      const dx = p.x - st.x, dy = p.y - st.y;
+      const lx = dx * c - dy * s;
+      const ly = dx * s + dy * c;
+      return Math.abs(lx) <= hw + 0.05 && Math.abs(ly) <= hr + 0.05;
+    }
+
+    function hitTestDeck(p) {
+      for (let i = state.decks.length - 1; i >= 0; i--) {
+        const d = state.decks[i];
+        if (pointInDeck(p, d)) return { type: 'deck', id: d.id };
+      }
+      return null;
+    }
+
+    function hitTestStairs(p) {
+      for (let i = state.stairs.length - 1; i >= 0; i--) {
+        const st = state.stairs[i];
+        if (pointInStairs(p, st)) return { type: 'stairs', id: st.id };
+      }
+      return null;
+    }
+
+    function getDeckHandles(deck) {
+      const x0 = deck.x, y0 = deck.y;
+      const x1 = deck.x + deck.w, y1 = deck.y + deck.d;
+      const xm = (x0 + x1) / 2, ym = (y0 + y1) / 2;
+      return [
+        { id: 'nw', x: x0, y: y0 },
+        { id: 'n',  x: xm, y: y0 },
+        { id: 'ne', x: x1, y: y0 },
+        { id: 'e',  x: x1, y: ym },
+        { id: 'se', x: x1, y: y1 },
+        { id: 's',  x: xm, y: y1 },
+        { id: 'sw', x: x0, y: y1 },
+        { id: 'w',  x: x0, y: ym },
+      ];
+    }
+
+    function applyDeckResize(deck, handle, worldPt) {
+      const p = { x: snapVal(worldPt.x), y: snapVal(worldPt.y) };
+      let L = deck.x, T = deck.y, R = deck.x + deck.w, B = deck.y + deck.d;
+      if (handle === 'nw' || handle === 'w' || handle === 'sw') L = p.x;
+      if (handle === 'ne' || handle === 'e' || handle === 'se') R = p.x;
+      if (handle === 'nw' || handle === 'n' || handle === 'ne') T = p.y;
+      if (handle === 'sw' || handle === 's' || handle === 'se') B = p.y;
+      if (R - L < DECK_MIN_FT) {
+        if (handle === 'nw' || handle === 'w' || handle === 'sw') L = R - DECK_MIN_FT;
+        else R = L + DECK_MIN_FT;
+      }
+      if (B - T < DECK_MIN_FT) {
+        if (handle === 'nw' || handle === 'n' || handle === 'ne') T = B - DECK_MIN_FT;
+        else B = T + DECK_MIN_FT;
+      }
+      deck.x = L; deck.y = T; deck.w = R - L; deck.d = B - T;
+    }
+
+    function placeDeckAt(raw, size) {
+      const w = (size && size.w > 0) ? size.w : DEFAULT_DECK_W_FT;
+      const d = (size && size.d > 0) ? size.d : DEFAULT_DECK_D_FT;
+      return normalizeDeck({
+        id: uid('deck'),
+        x: snapVal(raw.x - w / 2),
+        y: snapVal(raw.y - d / 2),
+        w, d, rotation: 0,
+      });
+    }
+
+    /** Snap stairs to nearest exterior wall: high/attach end at wall, run outward to grade. */
+    function placeStairsAt(raw) {
+      const near = findWallNear(raw, 3.5);
+      let rot = 0;
+      let cx = snapVal(raw.x);
+      let cy = snapVal(raw.y);
+      let attachWallId = null;
+      let attachT = null;
+      const width = DEFAULT_STAIR_WIDTH_FT;
+      const runLength = DEFAULT_STAIR_RUN_FT;
+      if (near) {
+        const wall = near.wall;
+        const { nx, ny } = wallInwardNormal(wall, near.pt);
+        const ox = -nx, oy = -ny; // outward (low end of stairs)
+        const halfRun = runLength / 2;
+        // Center so high end (+localY) sits just outside the wall
+        cx = near.pt.x + ox * (halfRun + 0.15);
+        cy = near.pt.y + oy * (halfRun + 0.15);
+        // Corner math: +localY maps to (-sin(rot), cos(rot)); aim that at inward (nx,ny)
+        rot = Math.atan2(-nx, ny);
+        attachWallId = wall.id;
+        attachT = near.t;
+      }
+      return normalizeStairs({
+        id: uid('stair'),
+        x: cx, y: cy,
+        width, runLength, rotation: rot,
+        attachWallId, attachT,
+      });
+    }
+
     function hitTest(p) {
       // Fixtures before rooms so counters/cabs/sinks inside a room stay selectable
       const fxHit = hitTestFixture(p);
       if (fxHit) return fxHit;
+      const stairHit = hitTestStairs(p);
+      if (stairHit) return stairHit;
+      const deckHit = hitTestDeck(p);
+      if (deckHit) return deckHit;
       // windows
       for (const win of state.windows) {
         const w = state.walls.find((x) => x.id === win.wallId);
@@ -826,6 +1020,8 @@
       if (type === 'wall') return state.walls.find((w) => w.id === id) || null;
       if (type === 'window') return state.windows.find((w) => w.id === id) || null;
       if (type === 'fixture') return state.fixtures.find((f) => f.id === id) || null;
+      if (type === 'deck') return state.decks.find((d) => d.id === id) || null;
+      if (type === 'stairs') return state.stairs.find((s) => s.id === id) || null;
       if (type === 'roofline') return state.rooflines.find((r) => r.id === id) || null;
       return null;
     }
@@ -858,6 +1054,8 @@
       }
       if (type === 'window') state.windows = state.windows.filter((w) => w.id !== id);
       if (type === 'fixture') state.fixtures = state.fixtures.filter((f) => f.id !== id);
+      if (type === 'deck') state.decks = state.decks.filter((d) => d.id !== id);
+      if (type === 'stairs') state.stairs = state.stairs.filter((s) => s.id !== id);
       if (type === 'roofline') state.rooflines = state.rooflines.filter((r) => r.id !== id);
       state.selected = null;
       notify();
@@ -904,6 +1102,14 @@
         if (props.heightFt != null && props.heightFt > 0) obj.heightFt = Number(props.heightFt);
         if (props.sillFt != null && props.sillFt >= 0) obj.sillFt = Number(props.sillFt);
         Object.assign(obj, normalizeWindow(obj));
+      } else if (state.selected.type === 'deck') {
+        if (props.name != null) obj.label = props.name;
+        if (props.width != null && props.width > 0) obj.w = Math.max(DECK_MIN_FT, snapVal(props.width));
+        if (props.length != null && props.length > 0) obj.d = Math.max(DECK_MIN_FT, snapVal(props.length));
+      } else if (state.selected.type === 'stairs') {
+        if (props.name != null) obj.label = props.name;
+        if (props.width != null && props.width > 0) obj.width = Math.max(STAIR_MIN_W_FT, snapVal(props.width));
+        if (props.length != null && props.length > 0) obj.runLength = Math.max(STAIR_MIN_RUN_FT, snapVal(props.length));
       } else if (state.selected.type === 'roofline' && props.name != null) {
         obj.name = props.name;
       }
@@ -1116,6 +1322,8 @@
         rooms: state.rooms,
         windows: state.windows.map(normalizeWindow),
         fixtures: state.fixtures.map(normalizeFixture).filter(Boolean),
+        decks: state.decks.map(normalizeDeck).filter(Boolean),
+        stairs: state.stairs.map(normalizeStairs).filter(Boolean),
         rooflines: state.rooflines,
         roofPitch: state.roofPitch,
         roofPitchLabel: state.roofPitchLabel,
@@ -1131,6 +1339,8 @@
       state.rooms = data.rooms || [];
       state.windows = (data.windows || []).map(normalizeWindow).filter(Boolean);
       state.fixtures = (data.fixtures || []).map(normalizeFixture).filter(Boolean);
+      state.decks = (data.decks || []).map(normalizeDeck).filter(Boolean);
+      state.stairs = (data.stairs || []).map(normalizeStairs).filter(Boolean);
       state.rooflines = data.rooflines || [];
       state.roofPitch = data.roofPitch != null ? data.roofPitch : null;
       state.roofPitchLabel = data.roofPitchLabel || null;
@@ -1180,7 +1390,7 @@
     }
 
     function isEmpty() {
-      return !state.walls.length && !state.rooms.length && !state.windows.length && !state.fixtures.length && !state.rooflines.length;
+      return !state.walls.length && !state.rooms.length && !state.windows.length && !state.fixtures.length && !state.decks.length && !state.stairs.length && !state.rooflines.length;
     }
 
     // ---- drawing ----
@@ -1445,6 +1655,98 @@
       }
 
 
+      // decks (EXAMPLE exterior platforms)
+      for (const deck0 of state.decks) {
+        const deck = normalizeDeck(deck0);
+        if (!deck) continue;
+        Object.assign(deck0, deck);
+        const sel = state.selected && state.selected.type === 'deck' && state.selected.id === deck.id;
+        const a = toScreen(deck.x, deck.y);
+        const b = toScreen(deck.x + deck.w, deck.y + deck.d);
+        ctx.fillStyle = sel ? 'rgba(47,111,106,0.28)' : 'rgba(196, 165, 116, 0.42)';
+        ctx.strokeStyle = sel ? '#2f6f6a' : '#8a6a3a';
+        ctx.lineWidth = sel ? 2.5 : 1.75;
+        ctx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
+        ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
+        // light board hatch
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(a.x, a.y, b.x - a.x, b.y - a.y);
+        ctx.clip();
+        ctx.strokeStyle = 'rgba(120, 90, 50, 0.28)';
+        ctx.lineWidth = 1;
+        const step = Math.max(4, 6 * state.zoom);
+        for (let x = a.x; x < b.x + step; x += step) {
+          ctx.beginPath();
+          ctx.moveTo(x, a.y);
+          ctx.lineTo(x, b.y);
+          ctx.stroke();
+        }
+        ctx.restore();
+        if (state.zoom >= 0.55) {
+          ctx.fillStyle = '#3a3224';
+          ctx.font = '600 11px system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('Deck', (a.x + b.x) / 2, (a.y + b.y) / 2 - 7);
+          ctx.fillStyle = '#6a5a40';
+          ctx.font = '11px system-ui, sans-serif';
+          ctx.fillText(Math.abs(deck.w).toFixed(0) + '×' + Math.abs(deck.d).toFixed(0) + ' ft',
+            (a.x + b.x) / 2, (a.y + b.y) / 2 + 8);
+        }
+      }
+      if (state.selected && state.selected.type === 'deck') {
+        const selDeck = state.decks.find((d) => d.id === state.selected.id);
+        if (selDeck) {
+          // reuse room handle drawing by temporary shape
+          drawRoomHandles({ x: selDeck.x, y: selDeck.y, w: selDeck.w, h: selDeck.d });
+        }
+      }
+
+      // stairs (EXAMPLE straight-run chevron symbol)
+      for (const st0 of state.stairs) {
+        const st = normalizeStairs(st0);
+        if (!st) continue;
+        Object.assign(st0, st);
+        const sel = state.selected && state.selected.type === 'stairs' && state.selected.id === st.id;
+        const corners = stairCorners(st).map((pt) => toScreen(pt.x, pt.y));
+        ctx.beginPath();
+        ctx.moveTo(corners[0].x, corners[0].y);
+        for (let i = 1; i < corners.length; i++) ctx.lineTo(corners[i].x, corners[i].y);
+        ctx.closePath();
+        ctx.fillStyle = sel ? 'rgba(47,111,106,0.22)' : 'rgba(160, 170, 180, 0.35)';
+        ctx.strokeStyle = sel ? '#2f6f6a' : '#4a5560';
+        ctx.lineWidth = sel ? 2.5 : 1.5;
+        ctx.fill();
+        ctx.stroke();
+        // chevron / tread lines along run
+        const nTreads = Math.max(4, Math.round(st.runLength));
+        const ang = st.rotation || 0;
+        const c = Math.cos(ang), s = Math.sin(ang);
+        const hw = st.width / 2;
+        ctx.strokeStyle = sel ? '#2f6f6a' : '#3d4650';
+        ctx.lineWidth = 1.25;
+        for (let i = 1; i < nTreads; i++) {
+          const t = i / nTreads;
+          const ly = -st.runLength / 2 + t * st.runLength;
+          const p1 = toScreen(st.x + (-hw) * c - ly * s, st.y + (-hw) * s + ly * c);
+          const p2 = toScreen(st.x + ( hw) * c - ly * s, st.y + ( hw) * s + ly * c);
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
+          ctx.stroke();
+        }
+        // arrow toward high / attach end
+        if (state.zoom >= 0.55) {
+          const mid = toScreen(st.x, st.y);
+          ctx.fillStyle = '#2a3036';
+          ctx.font = '600 10px system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('Stairs', mid.x, mid.y);
+        }
+      }
+
       // fixtures (counters / cabinets / sinks / outlets)
       for (const fx0 of state.fixtures) {
         const fx = normalizeFixture(fx0);
@@ -1587,6 +1889,21 @@
           ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
           ctx.setLineDash([]);
         }
+        if (d.kind === 'deck' && d.start) {
+          const x1 = Math.min(d.start.x, d.current.x);
+          const y1 = Math.min(d.start.y, d.current.y);
+          const x2 = Math.max(d.start.x, d.current.x);
+          const y2 = Math.max(d.start.y, d.current.y);
+          const a = toScreen(x1, y1);
+          const b = toScreen(x2, y2);
+          ctx.fillStyle = 'rgba(196, 165, 116, 0.22)';
+          ctx.strokeStyle = '#8a6a3a';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([5, 4]);
+          ctx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
+          ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
+          ctx.setLineDash([]);
+        }
         if (d.kind === 'roofline' && d.points && d.points.length) {
           ctx.strokeStyle = 'rgba(176,90,60,0.9)';
           ctx.lineWidth = 2;
@@ -1651,6 +1968,22 @@
       // Resize handles win over tool actions when a room is selected
       const handleHit = hitTestResizeHandle(e);
       if (handleHit) {
+        if (handleHit.kind === 'deck' || handleHit.deckId) {
+          const deck = state.decks.find((d) => d.id === handleHit.deckId);
+          if (deck) {
+            state.selected = { type: 'deck', id: deck.id };
+            state.drawing = {
+              kind: 'resize-deck',
+              id: deck.id,
+              handle: handleHit.handle,
+              moved: false,
+            };
+            notify();
+            draw();
+            updateDrawChrome();
+            return;
+          }
+        }
         const room = state.rooms.find((r) => r.id === handleHit.roomId);
         if (room) {
           state.selected = { type: 'room', id: room.id };
@@ -1716,6 +2049,28 @@
             };
           } else if (fx && fx.planKind === 'wall') {
             state.drawing = { kind: 'move-wall-fixture', id: fx.id, moved: false };
+          }
+        } else if (hit && hit.type === 'deck') {
+          const deck = state.decks.find((d) => d.id === hit.id);
+          if (deck) {
+            state.drawing = {
+              kind: 'move-deck',
+              id: deck.id,
+              ox: raw.x - deck.x,
+              oy: raw.y - deck.y,
+              moved: false,
+            };
+          }
+        } else if (hit && hit.type === 'stairs') {
+          const st = state.stairs.find((s) => s.id === hit.id);
+          if (st) {
+            state.drawing = {
+              kind: 'move-stairs',
+              id: st.id,
+              ox: raw.x - st.x,
+              oy: raw.y - st.y,
+              moved: false,
+            };
           }
         }
         notify();
@@ -1854,6 +2209,70 @@
         return;
       }
 
+      if (state.tool === 'deck') {
+        const dHit = hitTestDeck(raw);
+        if (dHit) {
+          state.selected = dHit;
+          const deck = state.decks.find((d) => d.id === dHit.id);
+          if (deck) {
+            state.drawing = {
+              kind: 'move-deck',
+              id: deck.id,
+              ox: raw.x - deck.x,
+              oy: raw.y - deck.y,
+              moved: false,
+            };
+          }
+          notify();
+          draw();
+          updateDrawChrome();
+          return;
+        }
+        // Drag to draw custom rect; tap places default 8×10
+        state.drawing = { kind: 'deck', start: p, current: p };
+        draw();
+        updateDrawChrome();
+        return;
+      }
+
+      if (state.tool === 'stairs') {
+        const sHit = hitTestStairs(raw);
+        if (sHit) {
+          state.selected = sHit;
+          const st = state.stairs.find((s) => s.id === sHit.id);
+          if (st) {
+            state.drawing = {
+              kind: 'move-stairs',
+              id: st.id,
+              ox: raw.x - st.x,
+              oy: raw.y - st.y,
+              moved: false,
+            };
+          }
+          notify();
+          draw();
+          updateDrawChrome();
+          return;
+        }
+        pushHistory();
+        const placed = placeStairsAt(raw);
+        state.stairs.push(placed);
+        state.selected = { type: 'stairs', id: placed.id };
+        state.drawing = {
+          kind: 'move-stairs',
+          id: placed.id,
+          ox: raw.x - placed.x,
+          oy: raw.y - placed.y,
+          moved: false,
+          justPlaced: true,
+        };
+        notify();
+        draw();
+        if (hooks.onToast) hooks.onToast('Stairs placed (EXAMPLE)');
+        updateDrawChrome();
+        return;
+      }
+
       if (state.tool === 'roofline') {
         if (!state.drawing || state.drawing.kind !== 'roofline') {
           state.drawing = { kind: 'roofline', points: [p], current: p };
@@ -1982,6 +2401,52 @@
             draw();
           }
         }
+      } else if (state.drawing.kind === 'deck') {
+        state.drawing.current = p;
+        draw();
+      } else if (state.drawing.kind === 'move-deck') {
+        const deck = state.decks.find((d) => d.id === state.drawing.id);
+        if (deck) {
+          if (!state.drawing.moved && !state.drawing.justPlaced) {
+            pushHistory();
+            state.drawing.moved = true;
+          }
+          deck.x = snapVal(raw.x - state.drawing.ox);
+          deck.y = snapVal(raw.y - state.drawing.oy);
+          notify();
+          draw();
+        }
+      } else if (state.drawing.kind === 'resize-deck') {
+        const deck = state.decks.find((d) => d.id === state.drawing.id);
+        if (deck) {
+          if (!state.drawing.moved) {
+            pushHistory();
+            state.drawing.moved = true;
+          }
+          applyDeckResize(deck, state.drawing.handle, raw);
+          notify();
+          draw();
+        }
+      } else if (state.drawing.kind === 'move-stairs') {
+        const st = state.stairs.find((s) => s.id === state.drawing.id);
+        if (st) {
+          if (!state.drawing.moved && !state.drawing.justPlaced) {
+            pushHistory();
+            state.drawing.moved = true;
+          }
+          st.x = snapVal(raw.x - state.drawing.ox);
+          st.y = snapVal(raw.y - state.drawing.oy);
+          // Re-snap orientation if near a wall while dragging
+          const near = findWallNear({ x: st.x, y: st.y }, 2.5);
+          if (near) {
+            const { nx, ny } = wallInwardNormal(near.wall, near.pt);
+            st.rotation = Math.atan2(-nx, ny);
+            st.attachWallId = near.wall.id;
+            st.attachT = near.t;
+          }
+          notify();
+          draw();
+        }
       }
     }
 
@@ -2072,8 +2537,34 @@
         return;
       }
 
+      if (state.drawing.kind === 'deck') {
+        const start = state.drawing.start;
+        const x1 = Math.min(start.x, p.x);
+        const y1 = Math.min(start.y, p.y);
+        const w = Math.abs(p.x - start.x);
+        const h = Math.abs(p.y - start.y);
+        state.drawing = null;
+        pushHistory();
+        let deck;
+        if (w > 1.5 && h > 1.5) {
+          deck = normalizeDeck({ id: uid('deck'), x: x1, y: y1, w, d: h });
+        } else {
+          deck = placeDeckAt(start);
+        }
+        state.decks.push(deck);
+        state.selected = { type: 'deck', id: deck.id };
+        notify();
+        if (hooks.onToast) hooks.onToast('Deck placed (EXAMPLE)');
+        draw();
+        updateDrawChrome();
+        try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+        return;
+      }
+
       if (state.drawing.kind === 'move-room' || state.drawing.kind === 'resize-room' ||
-          state.drawing.kind === 'move-fixture' || state.drawing.kind === 'move-wall-fixture') {
+          state.drawing.kind === 'move-fixture' || state.drawing.kind === 'move-wall-fixture' ||
+          state.drawing.kind === 'move-deck' || state.drawing.kind === 'resize-deck' ||
+          state.drawing.kind === 'move-stairs') {
         state.drawing = null;
         notify();
         draw();
@@ -2104,6 +2595,70 @@
     }
 
     function onDblClick(e) {
+      if (state.tool === 'deck') {
+        const dHit = hitTestDeck(raw);
+        if (dHit) {
+          state.selected = dHit;
+          const deck = state.decks.find((d) => d.id === dHit.id);
+          if (deck) {
+            state.drawing = {
+              kind: 'move-deck',
+              id: deck.id,
+              ox: raw.x - deck.x,
+              oy: raw.y - deck.y,
+              moved: false,
+            };
+          }
+          notify();
+          draw();
+          updateDrawChrome();
+          return;
+        }
+        // Drag to draw custom rect; tap places default 8×10
+        state.drawing = { kind: 'deck', start: p, current: p };
+        draw();
+        updateDrawChrome();
+        return;
+      }
+
+      if (state.tool === 'stairs') {
+        const sHit = hitTestStairs(raw);
+        if (sHit) {
+          state.selected = sHit;
+          const st = state.stairs.find((s) => s.id === sHit.id);
+          if (st) {
+            state.drawing = {
+              kind: 'move-stairs',
+              id: st.id,
+              ox: raw.x - st.x,
+              oy: raw.y - st.y,
+              moved: false,
+            };
+          }
+          notify();
+          draw();
+          updateDrawChrome();
+          return;
+        }
+        pushHistory();
+        const placed = placeStairsAt(raw);
+        state.stairs.push(placed);
+        state.selected = { type: 'stairs', id: placed.id };
+        state.drawing = {
+          kind: 'move-stairs',
+          id: placed.id,
+          ox: raw.x - placed.x,
+          oy: raw.y - placed.y,
+          moved: false,
+          justPlaced: true,
+        };
+        notify();
+        draw();
+        if (hooks.onToast) hooks.onToast('Stairs placed (EXAMPLE)');
+        updateDrawChrome();
+        return;
+      }
+
       if (state.tool === 'roofline') {
         e.preventDefault();
         finishRoofline();
@@ -2527,6 +3082,8 @@
         rooms: state.rooms,
         windows: state.windows,
         fixtures: state.fixtures,
+        decks: state.decks,
+        stairs: state.stairs,
         rooflines: state.rooflines,
         roofPitch: state.roofPitch,
         roofPitchLabel: state.roofPitchLabel,
@@ -2540,6 +3097,8 @@
       state.rooms = snap.rooms || [];
       state.windows = (snap.windows || []).map(normalizeWindow).filter(Boolean);
       state.fixtures = (snap.fixtures || []).map(normalizeFixture).filter(Boolean);
+      state.decks = (snap.decks || []).map(normalizeDeck).filter(Boolean);
+      state.stairs = (snap.stairs || []).map(normalizeStairs).filter(Boolean);
       // re-apply openingType if present in snap
       (snap.windows || []).forEach((src, i) => {
         if (state.windows[i] && src.openingType) state.windows[i].openingType = src.openingType;
@@ -2649,5 +3208,5 @@
     };
   }
 
-  global.HomePlanFloor = { createFloorPlan, FIXTURE_DEFS, FIXTURE_TOOL_OPTIONS, FIXTURE_TOOL_DEFAULTS, WIN_SIZE_PRESETS };
+  global.HomePlanFloor = { createFloorPlan, FIXTURE_DEFS, FIXTURE_TOOL_OPTIONS, FIXTURE_TOOL_DEFAULTS, WIN_SIZE_PRESETS, DEFAULT_DECK_W_FT, DEFAULT_DECK_D_FT, DEFAULT_STAIR_WIDTH_FT, DEFAULT_STAIR_RUN_FT };
 })(window);

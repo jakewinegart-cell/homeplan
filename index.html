@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>HomePlan — Remodel & Additions</title>
-  <link rel="stylesheet" href="styles.css?v=roof4" />
+  <link rel="stylesheet" href="styles.css?v=deck1" />
 </head>
 <body>
   <div id="app">
@@ -94,6 +94,15 @@
               <span>Outlet</span>
             </button>
             <div class="tool-divider"></div>
+            <button type="button" class="tool-btn" data-tool="deck" title="Place deck (EXAMPLE · default 8×10 ft)">
+              <span class="tool-icon">▦</span>
+              <span>Deck</span>
+            </button>
+            <button type="button" class="tool-btn" data-tool="stairs" title="Place straight stairs (EXAMPLE)">
+              <span class="tool-icon">≣</span>
+              <span>Stairs</span>
+            </button>
+            <div class="tool-divider"></div>
             <button type="button" class="tool-btn" id="btn-roof" title="Roof pitch &amp; style">
               <span class="tool-icon">⌃</span>
               <span>Roof</span>
@@ -135,7 +144,7 @@
             <div id="empty-tip" class="empty-tip">
               <button type="button" class="empty-tip-dismiss" id="btn-dismiss-tip" aria-label="Dismiss">×</button>
               <strong>Start your floor plan</strong>
-              <p>Tap <strong>Existing</strong> to place the old house, or drag a room rectangle. Tools: Wall / Window / Counter / Cabinet / Sink / Outlet / Roof.</p>
+              <p>Tap <strong>Existing</strong> to place the old house, or drag a room rectangle. Tools: Wall / Window / Counter / Cabinet / Sink / Outlet / Deck / Stairs / Roof.</p>
               <div class="empty-tip-actions">
                 <button type="button" class="btn btn-accent" id="btn-start-drawing">Start drawing</button>
                 <button type="button" class="btn btn-ghost" id="btn-got-it-tip">Got it</button>
@@ -723,11 +732,11 @@
     }
   }
   </script>
-  <script src="walkthrough-data.js?v=roof4"></script>
-  <script src="guide-data.js?v=roof4"></script>
-  <script src="floorplan.js?v=roof4"></script>
-  <script src="wizard-data.js?v=roof4"></script>
-  <script type="module" src="view3d.js?v=roof4"></script>
-  <script src="app.js?v=roof4"></script>
+  <script src="walkthrough-data.js?v=deck1"></script>
+  <script src="guide-data.js?v=deck1"></script>
+  <script src="floorplan.js?v=deck1"></script>
+  <script src="wizard-data.js?v=deck1"></script>
+  <script type="module" src="view3d.js?v=deck1"></script>
+  <script src="app.js?v=deck1"></script>
 </body>
 </html>

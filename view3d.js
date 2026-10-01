@@ -2394,6 +2394,18 @@ function createView3D(container) {
         c(f.x, f.y);
       }
     });
+    (plan.decks || []).forEach((d) => {
+      if (!d) return;
+      const w = Number(d.w) || 8, depth = Number(d.d != null ? d.d : d.h) || 10;
+      c(d.x, d.y); c(d.x + w, d.y + depth);
+    });
+    (plan.stairs || []).forEach((s) => {
+      if (!s || s.x == null || s.y == null) return;
+      const hw = (Number(s.width) || 3.5) / 2;
+      const hr = (Number(s.runLength) || 10) / 2;
+      c(s.x - hw - hr, s.y - hw - hr);
+      c(s.x + hw + hr, s.y + hw + hr);
+    });
     if (!any) return null;
     return { minX, minY, maxX, maxY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2,
       w: maxX - minX, d: maxY - minY };
@@ -2646,6 +2658,155 @@ function createView3D(container) {
         group.add(g);
         return;
       }
+    });
+  }
+
+
+  /** EXAMPLE wood deck platform — boards + light joists. Sits on floor plane (pier-lifted). */
+  function addDecksFromPlan(plan, ox, oz, group, mats) {
+    const list = (plan && plan.decks) || [];
+    if (!list.length) return;
+    const boardMat = mats && mats.boardMat
+      ? mats.boardMat
+      : mat(0xc4a574, { roughness: 0.78, metalness: 0.02 });
+    const joistMat = mats && mats.joistMat
+      ? mats.joistMat
+      : mat(0x8a6a3a, { roughness: 0.88, metalness: 0.02 });
+    const boardT = 0.12; // ~1.5 in
+    const joistH = 0.5;  // ~6 in EXAMPLE
+    list.forEach((d0) => {
+      const d = d0 || {};
+      const w = Math.max(2, Number(d.w) || 8);
+      const depth = Math.max(2, Number(d.d != null ? d.d : d.h) || 10);
+      const cx = (Number(d.x) || 0) + w / 2 - ox;
+      const cz = (Number(d.y) || 0) + depth / 2 - oz;
+      const g = new THREE.Group();
+      g.position.set(cx, 0, cz);
+      g.userData = { type: 'deck', label: 'Deck', id: d.id, example: true };
+
+      // Joists under boards (run along shorter span for EXAMPLE)
+      const spanAlongX = w <= depth;
+      const joistLen = spanAlongX ? w : depth;
+      const joistSpan = spanAlongX ? depth : w;
+      const joistSpacing = 1.33; // ~16 in o.c. EXAMPLE
+      const nJ = Math.max(2, Math.round(joistSpan / joistSpacing) + 1);
+      for (let i = 0; i < nJ; i++) {
+        const t = nJ === 1 ? 0.5 : i / (nJ - 1);
+        const off = (t - 0.5) * (joistSpan - 0.2);
+        const j = new THREE.Mesh(
+          new THREE.BoxGeometry(spanAlongX ? joistLen - 0.1 : 0.12, joistH, spanAlongX ? 0.12 : joistLen - 0.1),
+          joistMat
+        );
+        j.position.set(spanAlongX ? 0 : off, -joistH / 2 - 0.02, spanAlongX ? off : 0);
+        j.userData = { type: 'deck', label: 'Deck joist', example: true };
+        g.add(j);
+      }
+
+      // Top boards
+      const boardW = 0.46; // ~5.5 in
+      const nB = Math.max(2, Math.ceil(w / boardW));
+      const used = nB * boardW;
+      const x0 = -used / 2 + boardW / 2;
+      for (let i = 0; i < nB; i++) {
+        const gap = 0.02;
+        const bw = boardW - gap;
+        const board = new THREE.Mesh(
+          new THREE.BoxGeometry(bw, boardT, depth - 0.08),
+          boardMat
+        );
+        board.position.set(x0 + i * boardW, boardT / 2, 0);
+        board.castShadow = true;
+        board.receiveShadow = true;
+        board.userData = { type: 'deck', label: 'Deck', example: true };
+        g.add(board);
+      }
+      // Rim
+      const rimMat = joistMat;
+      [
+        [w, 0.18, 0.1, 0, boardT / 2, -depth / 2 + 0.05],
+        [w, 0.18, 0.1, 0, boardT / 2, depth / 2 - 0.05],
+        [0.1, 0.18, depth, -w / 2 + 0.05, boardT / 2, 0],
+        [0.1, 0.18, depth, w / 2 - 0.05, boardT / 2, 0],
+      ].forEach((p) => {
+        const rim = new THREE.Mesh(new THREE.BoxGeometry(p[0], p[1], p[2]), rimMat);
+        rim.position.set(p[3], p[4], p[5]);
+        rim.userData = { type: 'deck', label: 'Deck rim', example: true };
+        g.add(rim);
+      });
+      group.add(g);
+    });
+  }
+
+  /**
+   * EXAMPLE straight stairs from grade up to floorY (pier height / deck top).
+   * Added AFTER pier lift so y is world-absolute (not double-lifted).
+   */
+  function addStairsFromPlan(plan, ox, oz, group, floorY, mats) {
+    const list = (plan && plan.stairs) || [];
+    if (!list.length) return;
+    const riseTotal = Math.max(0.5, Number(floorY) || 0.75);
+    const treadMat = mats && mats.treadMat
+      ? mats.treadMat
+      : mat(0xb8956a, { roughness: 0.72, metalness: 0.03 });
+    const stringerMat = mats && mats.stringerMat
+      ? mats.stringerMat
+      : mat(0x7a5a32, { roughness: 0.85, metalness: 0.02 });
+    const riserHTarget = 7 / 12; // ~7 in EXAMPLE
+    list.forEach((s0) => {
+      const st = s0 || {};
+      const width = Math.max(2, Number(st.width) || 3.5);
+      const runLength = Math.max(3, Number(st.runLength) || 10);
+      const rot = Number(st.rotation) || 0;
+      const cx = (Number(st.x) || 0) - ox;
+      const cz = (Number(st.y) || 0) - oz;
+      const nTreads = Math.max(3, Math.round(riseTotal / riserHTarget));
+      const rise = riseTotal / nTreads;
+      const treadRun = runLength / nTreads;
+      const treadT = 0.12;
+      const g = new THREE.Group();
+      g.position.set(cx, 0, cz);
+      g.rotation.y = -rot; // plan rot: local +Y (depth) = run toward high/attach
+      g.userData = { type: 'stairsFromGrade', label: 'Stairs', id: st.id, example: true, skipPierLift: true };
+
+      // Stringers (two side beams)
+      const hyp = Math.hypot(runLength, riseTotal);
+      const pitch = Math.atan2(riseTotal, runLength);
+      [-width / 2 + 0.08, width / 2 - 0.08].forEach((sx) => {
+        const str = new THREE.Mesh(
+          new THREE.BoxGeometry(0.2, 0.85, hyp),
+          stringerMat
+        );
+        str.position.set(sx, riseTotal / 2, 0);
+        str.rotation.x = -pitch;
+        str.userData = { type: 'stairs', label: 'Stairs', example: true };
+        g.add(str);
+      });
+
+      // Treads (+ thin risers)
+      for (let i = 0; i < nTreads; i++) {
+        const yTop = (i + 1) * rise;
+        // Local Z: low at -run/2, high at +run/2
+        const z = -runLength / 2 + (i + 0.5) * treadRun;
+        const tread = new THREE.Mesh(
+          new THREE.BoxGeometry(width - 0.1, treadT, Math.max(0.55, treadRun * 0.92)),
+          treadMat
+        );
+        tread.position.set(0, yTop - treadT / 2, z);
+        tread.castShadow = true;
+        tread.receiveShadow = true;
+        tread.userData = { type: 'stairs', label: 'Stairs', example: true };
+        g.add(tread);
+        if (i > 0 || rise > 0.2) {
+          const riser = new THREE.Mesh(
+            new THREE.BoxGeometry(width - 0.15, Math.max(0.08, rise - 0.02), 0.08),
+            stringerMat
+          );
+          riser.position.set(0, yTop - rise / 2, z - treadRun * 0.42);
+          riser.userData = { type: 'stairs', label: 'Stairs', example: true };
+          g.add(riser);
+        }
+      }
+      group.add(g);
     });
   }
 
@@ -2955,6 +3116,11 @@ function createView3D(container) {
 
       // Fixtures (counters / cabinets / sinks / outlets) — before pier lift
       addFixturesFromPlan(plan, ox, oz, rootGroup);
+      // Decks sit on floor plane (elevated with pier lift)
+      addDecksFromPlan(plan, ox, oz, rootGroup, {
+        boardMat: floorMat,
+        joistMat: lumberMat,
+      });
 
       if (store.has_large_opening && (plan.walls || []).length) {
         let longest = plan.walls[0], best = 0;
@@ -3046,7 +3212,13 @@ function createView3D(container) {
             if (ch.userData && ch.userData.type === 'pierFoundation') return;
             // ground plane is first Mesh PlaneGeometry — also skip by material color check via userData
             if (ch.userData && ch.userData.type === 'ground') return;
+            if (ch.userData && (ch.userData.skipPierLift || ch.userData.type === 'stairsFromGrade')) return;
             ch.position.y += pierH;
+          });
+          // Stairs from grade up to elevated floor / deck top
+          addStairsFromPlan(plan, ox, oz, rootGroup, pierH, {
+            treadMat: floorMat,
+            stringerMat: lumberMat,
           });
         } else if (abFound && ft === 'slab') {
           // Framing on: thin pad below trusses so members read from above.
@@ -3067,6 +3239,16 @@ function createView3D(container) {
           addStemWallRing(fcx, fcz, fW + 0.5, fD + 0.5, 2.5, -2.5, foundMat, rootGroup);
         } else if (abFound && ft === 'basement') {
           addStemWallRing(fcx, fcz, fW + 0.5, fD + 0.5, 8, -8, foundMat, rootGroup);
+        }
+        // Non-pier: short EXAMPLE stairs up to near-grade deck / slab floor
+        if (ft !== 'piers') {
+          let stairRise = 0.75; // ~deck board stack / step up
+          if (ft === 'crawl') stairRise = 2.5;
+          if (ft === 'basement') stairRise = 0.75;
+          addStairsFromPlan(plan, ox, oz, rootGroup, stairRise, {
+            treadMat: floorMat,
+            stringerMat: lumberMat,
+          });
         }
       }
     } else {

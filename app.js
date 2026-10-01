@@ -526,6 +526,28 @@
         els.propHeight.value = '';
         els.propHeight.disabled = true;
       }
+    } else if (sel.type === 'deck') {
+      els.propName.value = obj.label || 'Deck';
+      els.propWidth.value = obj.w;
+      els.propLength.value = obj.d;
+      els.propWidth.disabled = false;
+      els.propLength.disabled = false;
+      if (els.propHeightWrap) els.propHeightWrap.classList.add('hidden');
+      if (els.propHeight) {
+        els.propHeight.value = '';
+        els.propHeight.disabled = true;
+      }
+    } else if (sel.type === 'stairs') {
+      els.propName.value = obj.label || 'Stairs';
+      els.propWidth.value = obj.width;
+      els.propLength.value = obj.runLength;
+      els.propWidth.disabled = false;
+      els.propLength.disabled = false;
+      if (els.propHeightWrap) els.propHeightWrap.classList.add('hidden');
+      if (els.propHeight) {
+        els.propHeight.value = '';
+        els.propHeight.disabled = true;
+      }
     } else {
       els.propName.value = obj.name || sel.type;
       els.propWidth.value = sel.type === 'wall'
