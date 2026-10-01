@@ -2783,6 +2783,8 @@ function createView3D(container) {
   /**
    * EXAMPLE straight stairs from grade up to floorY (pier height / deck top).
    * Added AFTER pier lift so y is world-absolute (not double-lifted).
+   * Treads = twin 2×6 lumber boards side-by-side (EXAMPLE, not engineered).
+   * Actual 2×6 ≈ 1.5" × 5.5" — readable lumber proportions matching deck boards.
    */
   function addStairsFromPlan(plan, ox, oz, group, floorY, mats) {
     const list = (plan && plan.stairs) || [];
@@ -2795,6 +2797,13 @@ function createView3D(container) {
       ? mats.stringerMat
       : mat(0x7a5a32, { roughness: 0.85, metalness: 0.02 });
     const riserHTarget = 7 / 12; // ~7 in EXAMPLE
+    // Readable 2×6 lumber (match deck boardT / boardW)
+    const boardT = 1.5 / 12; // ~1.5 in thick
+    const boardFace = 5.5 / 12; // ~5.5 in face (run depth per board)
+    const boardGap = 0.06; // ~3/4 in gap so twin 2×6s read clearly in 3D
+    // Stringers ≈ 2×12 laid on edge (readable, not stick-thin)
+    const strThick = 1.75 / 12; // ~1.75 in face
+    const strDepth = 11.25 / 12; // ~11.25 in 2×12 depth
     list.forEach((s0) => {
       const st = s0 || {};
       const width = Math.max(2, Number(st.width) || 3.5);
@@ -2805,47 +2814,68 @@ function createView3D(container) {
       const nTreads = Math.max(3, Math.round(riseTotal / riserHTarget));
       const rise = riseTotal / nTreads;
       const treadRun = runLength / nTreads;
-      const treadT = 0.12;
       const g = new THREE.Group();
       g.position.set(cx, 0, cz);
       g.rotation.y = -rot; // plan rot: local +Y (depth) = run toward high/attach
       g.userData = { type: 'stairsFromGrade', label: 'Stairs', id: st.id, example: true, skipPierLift: true };
 
-      // Stringers (two side beams)
+      // Stringers (two side 2×12 beams) — proportional under twin 2×6 treads
       const hyp = Math.hypot(runLength, riseTotal);
       const pitch = Math.atan2(riseTotal, runLength);
-      [-width / 2 + 0.08, width / 2 - 0.08].forEach((sx) => {
+      const strInset = strThick / 2 + 0.02;
+      [-width / 2 + strInset, width / 2 - strInset].forEach((sx) => {
         const str = new THREE.Mesh(
-          new THREE.BoxGeometry(0.2, 0.85, hyp),
+          new THREE.BoxGeometry(strThick, strDepth, hyp),
           stringerMat
         );
         str.position.set(sx, riseTotal / 2, 0);
         str.rotation.x = -pitch;
-        str.userData = { type: 'stairs', label: 'Stairs', example: true };
+        str.castShadow = true;
+        str.receiveShadow = true;
+        str.userData = { type: 'stairs', label: 'Stairs stringer', example: true };
         g.add(str);
       });
 
-      // Treads (+ thin risers)
+      // Twin 2×6 treads per step (+ thin 1× riser boards)
+      const treadSpan = Math.max(1.5, width - strThick * 2 - 0.06);
+      const packDepth = boardFace * 2; // two faces; gap carved from each board
+      const nosing = 0.75 / 12; // slight nose past riser
       for (let i = 0; i < nTreads; i++) {
         const yTop = (i + 1) * rise;
-        // Local Z: low at -run/2, high at +run/2
-        const z = -runLength / 2 + (i + 0.5) * treadRun;
-        const tread = new THREE.Mesh(
-          new THREE.BoxGeometry(width - 0.1, treadT, Math.max(0.55, treadRun * 0.92)),
-          treadMat
-        );
-        tread.position.set(0, yTop - treadT / 2, z);
-        tread.castShadow = true;
-        tread.receiveShadow = true;
-        tread.userData = { type: 'stairs', label: 'Stairs', example: true };
-        g.add(tread);
+        // Local Z: low at -run/2, high at +run/2 — center twin pack on step
+        const zStep = -runLength / 2 + (i + 0.5) * treadRun;
+        // Front board (lower/run-out) then rear board (toward high end)
+        const zFront = zStep - boardFace / 2;
+        const zRear = zStep + boardFace / 2;
+        [zFront, zRear].forEach((zBoard, bi) => {
+          const bw = boardFace - boardGap;
+          const tread = new THREE.Mesh(
+            new THREE.BoxGeometry(treadSpan, boardT, bw),
+            treadMat
+          );
+          tread.position.set(0, yTop - boardT / 2, zBoard);
+          tread.castShadow = true;
+          tread.receiveShadow = true;
+          tread.userData = {
+            type: 'stairs',
+            label: bi === 0 ? 'Stair tread 2×6 (front)' : 'Stair tread 2×6 (rear)',
+            example: true,
+            lumber: '2x6',
+          };
+          g.add(tread);
+        });
+        // Thin riser board under front edge of tread pack
         if (i > 0 || rise > 0.2) {
+          const riserT = 0.75 / 12; // ~1× thickness
+          const riserH = Math.max(0.08, rise - boardT * 0.15);
+          const zRiser = zStep - packDepth / 2 + nosing - riserT / 2;
           const riser = new THREE.Mesh(
-            new THREE.BoxGeometry(width - 0.15, Math.max(0.08, rise - 0.02), 0.08),
+            new THREE.BoxGeometry(treadSpan - 0.04, riserH, riserT),
             stringerMat
           );
-          riser.position.set(0, yTop - rise / 2, z - treadRun * 0.42);
-          riser.userData = { type: 'stairs', label: 'Stairs', example: true };
+          riser.position.set(0, yTop - boardT - riserH / 2, zRiser);
+          riser.castShadow = true;
+          riser.userData = { type: 'stairs', label: 'Stairs riser', example: true };
           g.add(riser);
         }
       }
