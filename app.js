@@ -242,7 +242,10 @@
     if (!view3d) return;
     if (!force && !planDirtyFor3d) return;
     const prevSel = view3d.getSelectedWindowId ? view3d.getSelectedWindowId() : null;
-    const plan = floor ? floor.exportData() : { walls: [], rooms: [], windows: [], rooflines: [] };
+    // Plan geometry is source of truth — never inject rooms/existingHouse from Guidance A2a/etc.
+    const plan = floor ? floor.exportData() : {
+      walls: [], rooms: [], windows: [], fixtures: [], decks: [], stairs: [], rooflines: [], existingHouse: null,
+    };
     const store = G() ? G().build3DStore(qaAnswers) : {};
     const keepCam = !!(opts && opts.preserveCamera) || !!prevSel;
     view3d.buildFromPlan(plan, store, { preserveCamera: keepCam });

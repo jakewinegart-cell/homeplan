@@ -1,6 +1,6 @@
-**Clear + deck-only 3D (`?v=edit3d2`):** Clear wipes walls/rooms/decks/stairs **and** existing-house + browser `localStorage` save. Empty Plan → empty 3D (no parametric ghost house). Deck/stairs alone render as a platform in 3D.
+**Empty Plan → empty 3D (`?v=edit3d3`):** Clear wipes walls/rooms/decks/stairs **and** existing-house + browser `localStorage` save. Empty Plan (Clear or fresh session) → ground/grid + “Nothing to show” only — **no** parametric 40×30 house, **no** Guidance-footprint addition. Guidance A2a/defaults alone never spawn a house; Plan geometry is source of truth. Deck/stairs alone still render.
 
-**3D openings edit (`?v=edit3d1 (superseded by edit3d2)`):** Restored Add Window/Door place + Delete in 3D after deck1. Grid/deck/stairs/existing-house no longer steal wall taps; camera focuses on addition+decks; inspector Delete + Delete key remove openings.
+**3D openings edit (`?v=edit3d1 (superseded by edit3d3)`):** Restored Add Window/Door place + Delete in 3D after deck1. Grid/deck/stairs/existing-house no longer steal wall taps; camera focuses on addition+decks; inspector Delete + Delete key remove openings.
 
 **Look + roof/truss (`?v=roof4`):** Floor open-web trusses clipped to **addition wall-plate footprint** only (no overshoot past exterior walls; planBounds/existing-house bloat removed). Roof outline = addition **exterior** walls (`additionBounds` + `WALL_THICK`) + modest clamped eave; corners flush with stud/plate outer faces; underside-at-plate (roof3) kept. Prior Look panel (`look1`) cladding/roofing/color controls unchanged. **EXAMPLE.**
 

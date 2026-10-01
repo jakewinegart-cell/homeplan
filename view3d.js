@@ -1,6 +1,7 @@
 /**
  * HomePlan 3D — Three.js conceptual massing from plan + §5 3D store
- * Sketch walls/rooms win over parametric footprint when both exist.
+ * Sketch walls/rooms win over Guidance footprint when both exist.
+ * Empty Plan → ground/grid + empty-state only. Never invent parametric house from answers.
  *
  * Realism P0 (Better tier): Guidance-bound cladding/roofing/foundation materials,
  * late-morning lighting, eave/window/foundation geometry cues. Stud toggle stays
@@ -2381,8 +2382,14 @@ function createView3D(container) {
     ));
   }
 
+  /** True only when Plan canvas carries real drawable geometry.
+   *  Fixtures / rooflines / Guidance answers alone do NOT count — they must not spawn a house. */
   function planHasAnyGeometry(plan) {
-    return !!(planHasSketch(plan) || planHasOutdoor(plan) || (plan && plan.existingHouse));
+    if (!plan) return false;
+    if (planHasSketch(plan)) return true;
+    if (planHasOutdoor(plan)) return true;
+    if (plan.existingHouse && plan.existingHouse.lengthFt > 0 && plan.existingHouse.widthFt > 0) return true;
+    return false;
   }
 
   function planBounds(plan) {
@@ -2903,20 +2910,24 @@ function createView3D(container) {
     const interiorMats = { paint: paintMat, ceiling: ceilingMat, baseboard: baseboardMat, junction: junctionMat };
     const lightCenters = []; // filled while building rooms / footprint
 
+    const sketch = planHasSketch(plan);
+    // PLAN GEOMETRY IS SOURCE OF TRUTH for 3D massing.
+    // Guidance answers (A2a footprint, window_count, attach_side, etc.) must NEVER
+    // invent an existing house or addition when Plan has no walls/rooms/decks/stairs/existingHouse.
+    // (edit3d2 removed parametric 40×30+addition; edit3d3 hardens empty UX + cache-bust.)
+    const trulyEmpty = !planHasAnyGeometry(plan);
+
+    // Hide "Using defaults" on empty Plan — Guidance defaults alone do not spawn a house.
     if (defaultsChip) {
-      const using = (store.usingDefaults || []).length > 0;
+      const using = !trulyEmpty && (store.usingDefaults || []).length > 0;
       defaultsChip.hidden = !using;
     }
 
-    const sketch = planHasSketch(plan);
-    // Empty plan (after Clear, or never drawn) must NOT invent a parametric ghost house.
-    // Decks/stairs/existingHouse alone still count as geometry (see else branch).
-    const trulyEmpty = !planHasAnyGeometry(plan);
     if (emptyEl) {
       emptyEl.hidden = !trulyEmpty;
       if (trulyEmpty) {
         emptyEl.querySelector('p').textContent =
-          'Plan is empty. Draw rooms/walls, place a Deck or Stairs, or add an Existing house on the Plan tab — 3D only shows what you drew (Clear wipes the old house).';
+          'Plan is empty. Draw rooms/walls, place a Deck or Stairs, or add an Existing house on the Plan tab — 3D only shows what you drew (Clear wipes the old house). Guidance size answers alone do not build a house.';
       }
     }
     if (canvasHost) canvasHost.style.opacity = trulyEmpty ? '0.3' : '1';
@@ -2930,15 +2941,19 @@ function createView3D(container) {
     ground.receiveShadow = true;
     ground.userData = { type: 'ground' };
     rootGroup.add(ground);
-    // Soft contact shadow disc under footprint (AO cue even if sun shadows soft)
-    const contact = new THREE.Mesh(
-      new THREE.CircleGeometry(Math.max(10, (store.footprint_l_ft || 14) * 0.55), 48),
-      new THREE.MeshBasicMaterial({ color: 0x2a2a22, transparent: true, opacity: 0.18, depthWrite: false })
-    );
-    contact.rotation.x = -Math.PI / 2;
-    contact.position.y = -0.03;
-    contact.userData = { type: 'ground' };
-    rootGroup.add(contact);
+
+    // Contact shadow only when there is real Plan geometry — never size from Guidance footprint alone.
+    if (!trulyEmpty) {
+      const contact = new THREE.Mesh(
+        new THREE.CircleGeometry(Math.max(10, (store.footprint_l_ft || 14) * 0.55), 48),
+        new THREE.MeshBasicMaterial({ color: 0x2a2a22, transparent: true, opacity: 0.18, depthWrite: false })
+      );
+      contact.rotation.x = -Math.PI / 2;
+      contact.position.y = -0.03;
+      contact.userData = { type: 'ground' };
+      rootGroup.add(contact);
+    }
+
     const grid = new THREE.GridHelper(80, 40, 0x9aab90, 0xb8c4a8);
     grid.position.y = 0.01;
     const gMats = Array.isArray(grid.material) ? grid.material : [grid.material];
@@ -2950,8 +2965,10 @@ function createView3D(container) {
     rootGroup.add(grid);
 
     if (trulyEmpty) {
+      // Defensive: zero house/addition meshes — ground + grid only.
       onResize();
       updateInspector(null);
+      preserveCamera = false;
       return;
     }
 
