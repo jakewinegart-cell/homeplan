@@ -14,6 +14,8 @@
  * Roof outline = addition exterior (bounds+WALL_THICK) + clamped eave; plate height roof3.
  * interior1: Roof toggle (session); oven/fridge placeables; door long-press swing;
  * opening drag planes use floor-above-grade (ground1 lift); overhang re-verified flush.
+ * roomh1: per-room stud height (wallHeightFt) drives studs/plates/roof underside.
+ * Roof tie-in sheds the addition roof into the existing house (EXAMPLE).
  *
  * Realism2: richer procedural albedo+bump (clapboard/brick/shingles), lumber grain,
  * foundation/ground maps, fascia/soffit eave edge, stronger late-morning sun + soft
@@ -182,6 +184,8 @@ function createView3D(container) {
   let addPresetWin = { id: '3x4', w: 36, h: 48 };
   let addPresetDoor = { id: '36x80', w: DEFAULT_DOOR_W_IN, h: DEFAULT_DOOR_H_IN };
   let addPendingTap = null; // { x, y, pointerId } — place on short tap
+  let tiePickMode = false;
+  let tiePendingTap = null;
   let lastTapDown = null; // { winId, t, x, y, pointerId, wasDrag } for double-tap
   let pendingEmptyExit = null; // { x, y, pointerId } — click empty exits edit
   let suppressOrbit = false; // true after double-tap / long-press until pointerup
@@ -2510,6 +2514,194 @@ function createView3D(container) {
     }
   }
 
+  /**
+   * Shed / lean-to that terminates on the existing house at the marked tie-in.
+   * Low eave underside sits on THIS addition's stud height. High edge is inset
+   * onto the existing roof (EXAMPLE 9 ft wall, 5/12) at the chosen tie height.
+   * Modest eave on the outer sides only — nothing past the tie into the house,
+   * and this does not touch floor-truss span.
+   */
+  function addTieInRoof(rootGroup, plan, ox, oz, ab, plateFt, pitch, overhangIn, roofMat, tie) {
+    const oh = clampEaveOverhangIn(overhangIn) / 12;
+    const thick = ROOF_THICK;
+    const plateTop = plateFt + thick;
+    const tieH = (tie.heightFt > 0) ? Number(tie.heightFt) : plateFt;
+    const tieTop = tieH + thick;
+    const group = new THREE.Group();
+    group.userData = { type: 'additionRoof', label: 'Addition roof' };
+
+    const extW = Math.max(ab.w, 1) + WALL_THICK;
+    const extD = Math.max(ab.d, 1) + WALL_THICK;
+    const left = ab.cx - extW / 2;
+    const right = ab.cx + extW / 2;
+    const north = ab.cy - extD / 2;
+    const south = ab.cy + extD / 2;
+    const tmx = (tie.x1 + tie.x2) / 2;
+    const tmy = (tie.y1 + tie.y2) / 2;
+    const side = [
+      ['n', Math.abs(tmy - north)],
+      ['s', Math.abs(tmy - south)],
+      ['w', Math.abs(tmx - left)],
+      ['e', Math.abs(tmx - right)],
+    ].sort((a, b) => a[1] - b[1])[0][0];
+
+    let lw1, lw2, outX, outY;
+    if (side === 'n') {
+      lw1 = { x: left, y: south }; lw2 = { x: right, y: south }; outX = 0; outY = 1;
+    } else if (side === 's') {
+      lw1 = { x: left, y: north }; lw2 = { x: right, y: north }; outX = 0; outY = -1;
+    } else if (side === 'w') {
+      lw1 = { x: right, y: north }; lw2 = { x: right, y: south }; outX = 1; outY = 0;
+    } else {
+      lw1 = { x: left, y: north }; lw2 = { x: left, y: south }; outX = -1; outY = 0;
+    }
+    const rdx = lw2.x - lw1.x, rdy = lw2.y - lw1.y;
+    const rlen = Math.hypot(rdx, rdy) || 1;
+    const rux = rdx / rlen, ruy = rdy / rlen;
+
+    // High edge: marked tie, shifted INTO the existing roof so the chosen
+    // height lands on the EXAMPLE existing roof plane (wall 9 ft, pitch 5/12).
+    const EH_PLATE = 9;
+    const EH_PITCH = 5 / 12;
+    let inward = { x: 0, y: 0 };
+    const host = tie.host;
+    if (host && host.side === 'north') inward = { x: 0, y: 1 };
+    else if (host && host.side === 'south') inward = { x: 0, y: -1 };
+    else if (host && host.side === 'west') inward = { x: 1, y: 0 };
+    else if (host && host.side === 'east') inward = { x: -1, y: 0 };
+    else if (plan.existingHouse) {
+      const eh = plan.existingHouse;
+      const cx = eh.x + eh.lengthFt / 2, cy = eh.y + eh.widthFt / 2;
+      const dx = cx - tmx, dy = cy - tmy;
+      const l = Math.hypot(dx, dy) || 1;
+      inward = { x: dx / l, y: dy / l };
+    }
+    let inset = 0;
+    if (plan.existingHouse && (inward.x || inward.y)) {
+      const eh = plan.existingHouse;
+      const half = Math.min(eh.lengthFt, eh.widthFt) / 2;
+      const rise = Math.max(0, tieH - EH_PLATE);
+      inset = Math.min(half * 0.85, EH_PITCH > 0 ? rise / EH_PITCH : 0);
+    }
+    let h1 = { x: tie.x1 + inward.x * inset, y: tie.y1 + inward.y * inset };
+    let h2 = { x: tie.x2 + inward.x * inset, y: tie.y2 + inward.y * inset };
+    // Keep a little rake along the tie line, but do not leave the existing roof.
+    if (tie.kind !== 'point') {
+      const hdx = h2.x - h1.x, hdy = h2.y - h1.y;
+      const hlen = Math.hypot(hdx, hdy) || 1;
+      const hux = hdx / hlen, huy = hdy / hlen;
+      h1 = { x: h1.x - hux * Math.min(oh, 0.5), y: h1.y - huy * Math.min(oh, 0.5) };
+      h2 = { x: h2.x + hux * Math.min(oh, 0.5), y: h2.y + huy * Math.min(oh, 0.5) };
+    }
+
+    const hmid = { x: (h1.x + h2.x) / 2, y: (h1.y + h2.y) / 2 };
+    const run = Math.max(0.05, Math.abs((hmid.x - lw1.x) * outX + (hmid.y - lw1.y) * outY));
+    const slope = (tieTop - plateTop) / run;
+    const e1 = { x: lw1.x - rux * oh + outX * oh, y: lw1.y - ruy * oh + outY * oh };
+    const e2 = { x: lw2.x + rux * oh + outX * oh, y: lw2.y + ruy * oh + outY * oh };
+    const eaveY = plateTop - oh * slope;
+
+    function V(x, yPlan, y) { return [x - ox, y, yPlan - oz]; }
+    const c1 = V(e1.x, e1.y, eaveY);
+    const c2 = V(e2.x, e2.y, eaveY);
+    const c3 = V(h2.x, h2.y, tieTop);
+    const c4 = V(h1.x, h1.y, tieTop);
+
+    function addQuad(corners, matl, label) {
+      const verts = new Float32Array(corners.flat());
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+      geo.setIndex([0, 1, 2, 0, 2, 3]);
+      geo.computeVertexNormals();
+      const mesh = new THREE.Mesh(geo, matl);
+      applyRoofUVs(mesh, 0.65);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.userData = { type: 'roof', label: label || 'Roof' };
+      group.add(mesh);
+    }
+    addQuad([c1, c2, c3, c4], roofMat, 'Roof');
+    addQuad(cornersBot([c1, c2, c3, c4], thick), soffitMaterial(), 'Soffit');
+
+    const fasciaMat = fasciaMaterial();
+    const FASCIA_H = 7 / 12, FASCIA_T = 1.5 / 12;
+    const ldx = c2[0] - c1[0], ldz = c2[2] - c1[2];
+    const llen = Math.hypot(ldx, ldz) || 1;
+    const fascia = new THREE.Mesh(new THREE.BoxGeometry(llen * 0.98, FASCIA_H, FASCIA_T), fasciaMat);
+    fascia.position.set((c1[0] + c2[0]) / 2, eaveY - thick - FASCIA_H / 2 + 0.02, (c1[2] + c2[2]) / 2);
+    fascia.rotation.y = -Math.atan2(ldz, ldx);
+    fascia.castShadow = true;
+    fascia.userData = { type: 'roof', label: 'Fascia' };
+    group.add(fascia);
+
+    // Rake fascia along the two sloping edges (outer sides only)
+    [[c1, c4], [c2, c3]].forEach(([a, b]) => {
+      const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
+      const len = Math.hypot(dx, dy, dz) || 1;
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(len * 0.96, FASCIA_H * 0.8, FASCIA_T), fasciaMat);
+      bar.position.set((a[0] + b[0]) / 2, (a[1] + b[1]) / 2 - thick * 0.5, (a[2] + b[2]) / 2);
+      bar.rotation.y = -Math.atan2(dz, dx);
+      bar.rotation.z = Math.atan2(dy, Math.hypot(dx, dz));
+      bar.userData = { type: 'roof', label: 'Fascia' };
+      group.add(bar);
+    });
+
+    const thx = c4[0] - c3[0], thz = c4[2] - c3[2];
+    const tlen = Math.max(0.45, Math.hypot(thx, thz));
+    const marker = new THREE.Mesh(
+      new THREE.BoxGeometry(tlen, 0.08, 0.36),
+      mat(0xc2410c, { emissive: 0x7c2d12, emissiveIntensity: 0.55 })
+    );
+    // Stripe on the joint (example), not a bar floating above the existing roof.
+    marker.position.set((c3[0] + c4[0]) / 2, (c3[1] + c4[1]) / 2 - 0.02, (c3[2] + c4[2]) / 2);
+    marker.rotation.y = -Math.atan2(thz, thx);
+    marker.userData = { type: 'roofTie', label: 'Roof tie-in' };
+    group.add(marker);
+
+    group.visible = !!showRoof;
+    rootGroup.add(group);
+  }
+
+  function cornersBot(corners, thick) {
+    return corners.map((c) => [c[0], c[1] - thick, c[2]]);
+  }
+
+  function addAdditionRoofs(rootGroup, plan, ox, oz, ab, maxWallH, wallH, pitch, eaveIn, roofMat, roofStyle, store) {
+    if (!ab) return;
+    const tie = plan.roofTieIn;
+    const ehOk = !!(plan.existingHouse && plan.existingHouse.lengthFt > 0 && plan.existingHouse.widthFt > 0);
+    const tieOk = !!(tie && ehOk && isFinite(tie.x1) && isFinite(tie.y1) && isFinite(tie.x2) && isFinite(tie.y2) && tie.heightFt > 0);
+    if (tieOk) {
+      const plates = (plan.rooms || []).map((r) => roomStudFt(r, 0)).filter((h) => h > 0);
+      const plate = plates.length ? Math.max.apply(null, plates) : (maxWallH > 0 ? maxWallH : wallH);
+      addTieInRoof(rootGroup, plan, ox, oz, ab, plate, pitch, eaveIn, roofMat, tie);
+      return;
+    }
+    const plates = (plan.rooms || []).map((r) => roomStudFt(r, wallH));
+    const differ = plates.length > 1 && (Math.max.apply(null, plates) - Math.min.apply(null, plates) > 0.4);
+    if (differ) {
+      (plan.rooms || []).forEach((room) => {
+        const h = roomStudFt(room, wallH);
+        const g = new THREE.Group();
+        g.position.set(room.x + room.w / 2 - ox, 0, room.y + room.h / 2 - oz);
+        g.userData = { type: 'additionRoof', label: 'Addition roof' };
+        addRoof(g, Math.abs(room.w) + WALL_THICK, Math.abs(room.h) + WALL_THICK, h, pitch, eaveIn, roofMat, store.roof_tie_in, roofStyle);
+        g.visible = !!showRoof;
+        rootGroup.add(g);
+      });
+      return;
+    }
+    const roofW = Math.max(ab.w, 1) + WALL_THICK;
+    const roofD = Math.max(ab.d, 1) + WALL_THICK;
+    const gRoof = new THREE.Group();
+    gRoof.position.set(ab.cx - ox, 0, ab.cy - oz);
+    gRoof.userData = { type: 'additionRoof', label: 'Addition roof' };
+    const bear = maxWallH > 0 ? maxWallH : wallH;
+    addRoof(gRoof, roofW, roofD, bear, pitch, eaveIn, roofMat, store.roof_tie_in, roofStyle);
+    gRoof.visible = !!showRoof;
+    rootGroup.add(gRoof);
+  }
+
   function addRoof(group, w, d, wallH, pitch, overhang, roofMat, tieIn, style) {
     if (style === 'hip') addRoofHip(group, w, d, wallH, pitch, overhang, roofMat, tieIn);
     else addRoofGable(group, w, d, wallH, pitch, overhang, roofMat, tieIn);
@@ -2573,6 +2765,17 @@ function createView3D(container) {
     if (!any) return null;
     return { minX, minY, maxX, maxY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2,
       w: maxX - minX, d: maxY - minY };
+  }
+
+  /** Stud height for one room. Prefers wallHeightFt; falls back to the tallest side. */
+  function roomStudFt(room, fallback) {
+    const fb = (fallback > 0) ? fallback : 8;
+    if (!room) return fb;
+    if (room.wallHeightFt > 0) return Number(room.wallHeightFt);
+    const h = room.wallHeights || {};
+    const vals = ['north', 'east', 'south', 'west'].map((k) => Number(h[k])).filter((v) => v > 0);
+    if (vals.length) return Math.max.apply(null, vals);
+    return fb;
   }
 
   /** Addition / remodel footprint only — rooms + walls. Excludes existing house,
@@ -3218,7 +3421,7 @@ function createView3D(container) {
           }
         }
         // Room-center warm fill near ceiling (absolute y; pier lift moves group later)
-        const rh = wallH;
+        const rh = roomStudFt(r, wallH);
         lightCenters.push({
           x: r.x + r.w / 2 - ox,
           y: rh * 0.88,
@@ -3265,6 +3468,10 @@ function createView3D(container) {
       // (per-wall heightFt). Do NOT seed with store.wall_height_ft — that leaves the
       // roof floating when Guidance height > drawn wall heights.
       let maxWallH = 0;
+      (plan.rooms || []).forEach((room) => {
+        const rh = roomStudFt(room, 0);
+        if (rh > maxWallH) maxWallH = rh;
+      });
 
       if (!showStuds) {
         (plan.rooms || []).forEach((room) => {
@@ -3423,19 +3630,12 @@ function createView3D(container) {
       focusY = maxWallH * 0.4;
 
       if (store.show_roof !== false) {
-        // Roof footprint = addition exterior wall outline only (existing house keeps its roof).
-        // additionBounds = wall centerlines; +WALL_THICK → outer stud/plate faces (corners flush).
-        // Extra size beyond that comes solely from eave_overhang_in (modest, clamped ≤36 in).
-        // Vertical (roof3): underside at wall line = top plate; tip may drop along pitch.
+        // Roof footprint = addition exterior only (existing house keeps its own roof).
+        // No tie-in: one gable/hip, underside at the tallest room stud height (not a
+        // Guidance-only global). Tie-in: shed terminates on the existing roof.
+        // Floor trusses stay on additionBounds — this block does not move them.
         const ab = additionBounds(plan) || b;
-        const roofW = Math.max(ab.w, 1) + WALL_THICK;
-        const roofD = Math.max(ab.d, 1) + WALL_THICK;
-        const gRoof = new THREE.Group();
-        gRoof.position.set(ab.cx - ox, 0, ab.cy - oz);
-        gRoof.userData = { type: 'additionRoof' };
-        addRoof(gRoof, roofW, roofD, maxWallH, pitch, eaveIn, roofMat, store.roof_tie_in, roofStyle);
-        gRoof.visible = !!showRoof;
-        rootGroup.add(gRoof);
+        addAdditionRoofs(rootGroup, plan, ox, oz, ab, maxWallH, wallH, pitch, eaveIn, roofMat, roofStyle, store);
       }
 
       const ridgeMat = mat(0xb05a3c);
@@ -3971,6 +4171,15 @@ function createView3D(container) {
     }
     if (e.button !== 0) return;
 
+    if (tiePickMode) {
+      clearLongPress();
+      longPressShown = false;
+      lastTapDown = null;
+      pendingEmptyExit = null;
+      tiePendingTap = { x: e.clientX, y: e.clientY, pointerId: e.pointerId, wasDrag: false };
+      return;
+    }
+
     // Add-opening mode: arm a short tap to place on wall (orbit still if drag)
     if (addMode) {
       clearLongPress();
@@ -4084,6 +4293,11 @@ function createView3D(container) {
         addPendingTap.wasDrag = true;
       }
     }
+    if (tiePendingTap && tiePendingTap.pointerId === e.pointerId) {
+      if (Math.hypot(e.clientX - tiePendingTap.x, e.clientY - tiePendingTap.y) > TAP_MOVE_PX) {
+        tiePendingTap.wasDrag = true;
+      }
+    }
   }
 
   function onPointerMoveDoc(e) {
@@ -4146,6 +4360,47 @@ function createView3D(container) {
     e.preventDefault();
   }
 
+  function ancestorType(obj, type) {
+    let o = obj;
+    while (o) {
+      if (o.userData && o.userData.type === type) return o;
+      o = o.parent;
+    }
+    return null;
+  }
+
+  function tryPlaceTieFromEvent(e) {
+    if (!renderer || !lastPlan || !lastPlan.existingHouse) {
+      if (hooks.onToast) hooks.onToast('Place the existing house before a roof tie-in');
+      tiePickMode = false;
+      return false;
+    }
+    setPointerFromEvent(e);
+    raycaster.setFromCamera(pointer, camera);
+    const hits = raycaster.intersectObjects(rootGroup.children, true);
+    let hit = null;
+    for (let i = 0; i < hits.length; i++) {
+      if (ancestorType(hits[i].object, 'existingHouse')) { hit = hits[i]; break; }
+    }
+    if (!hit) {
+      if (hooks.onToast) hooks.onToast('Tap the existing house — that is where the roof ties in');
+      return false;
+    }
+    const lift = rootGroup ? rootGroup.position.y : 0;
+    const planX = hit.point.x + planOrigin.ox;
+    const planY = hit.point.z + planOrigin.oz;
+    let heightFt = hit.point.y - lift;
+    // A tap on the wall face (below the plate) uses the default ramp; a tap on
+    // the existing roof keeps that height so the tie meets where you touched.
+    if (!(heightFt > 9.4)) heightFt = null;
+    else heightFt = Math.round(heightFt * 2) / 2;
+    if (hooks.onRoofTieIn) {
+      hooks.onRoofTieIn({ x: planX, y: planY, heightFt: heightFt, kind: 'line' });
+    }
+    tiePickMode = false;
+    return true;
+  }
+
   function finishPointerUp(e) {
     // Long-press incomplete → just clear timer (short tap / release)
     if (longPress && (e.pointerId == null || longPress.pointerId === e.pointerId)) {
@@ -4163,6 +4418,16 @@ function createView3D(container) {
       lastTapDown = null;
       pendingEmptyExit = null;
       addPendingTap = null;
+      tiePendingTap = null;
+      return;
+    }
+
+    if (tiePendingTap && (e.pointerId == null || tiePendingTap.pointerId === e.pointerId)) {
+      const tap = tiePendingTap;
+      tiePendingTap = null;
+      if (!tap.wasDrag && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) <= TAP_MOVE_PX) {
+        tryPlaceTieFromEvent(e);
+      }
       return;
     }
 
@@ -4222,7 +4487,7 @@ function createView3D(container) {
   function onPointerUpDoc(e) {
     // Only handle if the gesture relates to our canvas / active drag / pending exit / long-press / add tap
     if (!renderer) return;
-    if (dragState || pendingEmptyExit || suppressOrbit || longPress || longPressShown || addPendingTap) {
+    if (dragState || pendingEmptyExit || suppressOrbit || longPress || longPressShown || addPendingTap || tiePendingTap) {
       finishPointerUp(e);
     }
   }
@@ -5175,6 +5440,15 @@ function createView3D(container) {
     debugShowPartTagForType,
     debugPartTagState,
     debugHidePartTag: hidePartTag,
+    setTiePickMode(on) {
+      tiePickMode = !!on;
+      if (tiePickMode && (!lastPlan || !lastPlan.existingHouse)) {
+        tiePickMode = false;
+        if (hooks.onToast) hooks.onToast('Place the existing house before a roof tie-in');
+      }
+      return tiePickMode;
+    },
+    getTiePickMode: () => tiePickMode,
     setAddMode,
     getAddMode: () => addMode,
     deleteSelectedOpening,

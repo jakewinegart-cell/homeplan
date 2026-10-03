@@ -311,6 +311,9 @@
       pinchStartZoom: 1,
       // Locked existing house footprint (addition context) — not selectable
       existingHouse: null, // { lengthFt, widthFt, x, y }
+      // Addition roof tie-in to the existing house (EXAMPLE, not engineered).
+      // { kind:'line'|'point', x1,y1,x2,y2, heightFt, host:{x1,y1,x2,y2,side} }
+      roofTieIn: null,
     };
 
     function pushHistory() {
@@ -326,6 +329,7 @@
         roofPitchLabel: state.roofPitchLabel,
         roofStyle: state.roofStyle,
         existingHouse: state.existingHouse,
+        roofTieIn: state.roofTieIn,
       }));
       if (state.history.length > 40) state.history.shift();
     }
@@ -344,6 +348,7 @@
       state.roofPitchLabel = prev.roofPitchLabel || null;
       state.roofStyle = prev.roofStyle || null;
       state.existingHouse = prev.existingHouse ? { ...prev.existingHouse } : null;
+      state.roofTieIn = prev.roofTieIn ? JSON.parse(JSON.stringify(prev.roofTieIn)) : null;
       state.selected = null;
       state.drawing = null;
       notify();
@@ -354,7 +359,7 @@
     function clearAll() {
       const alreadyEmpty = !state.walls.length && !state.rooms.length && !state.windows.length
         && !state.fixtures.length && !state.decks.length && !state.stairs.length
-        && !state.rooflines.length && !state.existingHouse;
+        && !state.rooflines.length && !state.existingHouse && !state.roofTieIn;
       if (alreadyEmpty) return;
       pushHistory();
       state.walls = [];
@@ -368,6 +373,7 @@
       state.roofPitchLabel = null;
       state.roofStyle = null;
       state.existingHouse = null; // wipe locked house so 3D cannot keep a ghost footprint
+      state.roofTieIn = null;
       state.selected = null;
       state.drawing = null;
       notify();
@@ -385,6 +391,10 @@
       if (tool === 'roofline') {
         if (hooks.onToast) hooks.onToast('Use Roof for pitch & style (freehand demoted)');
         tool = 'select';
+      }
+      if (tool === 'tiein' && !state.existingHouse) {
+        if (hooks.onToast) hooks.onToast('Place the existing house before a roof tie-in');
+        return;
       }
       // Finishing mid-draw when switching away
       if (tool !== state.tool) {
@@ -647,11 +657,251 @@
       if (!room) return;
       const hmap = normalizeHeights(heights);
       room.wallHeights = hmap;
+      room.wallHeightFt = Math.max.apply(null, ROOM_SIDES.map((side) => hmap[side]));
       state.walls.filter((w) => w.roomId === roomId).forEach((w) => {
         if (w.side && hmap[w.side] != null) w.heightFt = hmap[w.side];
       });
       notify();
       draw();
+    }
+
+    /** One stud height for the room — plates, studs, and roof bearing follow it. */
+    function setRoomStudHeight(roomId, heightFt) {
+      const room = state.rooms.find((r) => r.id === roomId);
+      if (!room) return null;
+      const h = Math.max(1, Math.min(30, Number(heightFt) || DEFAULT_WALL_HEIGHT_FT));
+      pushHistory();
+      room.wallHeightFt = h;
+      room.wallHeights = { north: h, east: h, south: h, west: h };
+      state.walls.filter((w) => w.roomId === room.id).forEach((w) => { w.heightFt = h; });
+      notify();
+      draw();
+      return room;
+    }
+
+    function houseEdges(eh) {
+      const x0 = eh.x, y0 = eh.y, x1 = eh.x + eh.lengthFt, y1 = eh.y + eh.widthFt;
+      return [
+        { side: 'north', x1: x0, y1: y0, x2: x1, y2: y0 },
+        { side: 'east', x1: x1, y1: y0, x2: x1, y2: y1 },
+        { side: 'south', x1: x0, y1: y1, x2: x1, y2: y1 },
+        { side: 'west', x1: x0, y1: y0, x2: x0, y2: y1 },
+      ];
+    }
+
+    function nearestHouseEdge(p) {
+      const eh = state.existingHouse;
+      if (!eh || !p) return null;
+      let best = null;
+      let bestD = Infinity;
+      houseEdges(eh).forEach((e) => {
+        const r = pointNearSegment(p, { x: e.x1, y: e.y1 }, { x: e.x2, y: e.y2 });
+        if (r.d < bestD) {
+          bestD = r.d;
+          best = { side: e.side, x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2, proj: r.pt, d: r.d };
+        }
+      });
+      return best;
+    }
+
+    function projectOntoHost(p, host) {
+      const r = pointNearSegment(p, { x: host.x1, y: host.y1 }, { x: host.x2, y: host.y2 });
+      return r.pt;
+    }
+
+    function hostIsHoriz(host) {
+      return Math.abs(host.y2 - host.y1) <= Math.abs(host.x2 - host.x1);
+    }
+
+    function additionSpanOnHost(host) {
+      const horiz = hostIsHoriz(host);
+      const rooms = state.rooms;
+      if (!rooms.length) {
+        if (horiz) {
+          return { x1: Math.min(host.x1, host.x2), y1: host.y1, x2: Math.max(host.x1, host.x2), y2: host.y1 };
+        }
+        return { x1: host.x1, y1: Math.min(host.y1, host.y2), x2: host.x1, y2: Math.max(host.y1, host.y2) };
+      }
+      if (horiz) {
+        const y = (host.y1 + host.y2) / 2;
+        let a = Math.min.apply(null, rooms.map((r) => r.x)) - 0.25;
+        let b = Math.max.apply(null, rooms.map((r) => r.x + r.w)) + 0.25;
+        const e0 = Math.min(host.x1, host.x2), e1 = Math.max(host.x1, host.x2);
+        let xA = Math.max(e0, a), xB = Math.min(e1, b);
+        if (xB - xA < 4) {
+          const mid = Math.max(e0, Math.min(e1, (a + b) / 2));
+          const half = Math.min((e1 - e0) / 2, Math.max(4, (b - a) / 2));
+          xA = Math.max(e0, mid - half);
+          xB = Math.min(e1, mid + half);
+          if (xB - xA < 3) { xA = e0; xB = e1; }
+        }
+        return { x1: xA, y1: y, x2: xB, y2: y };
+      }
+      const x = (host.x1 + host.x2) / 2;
+      let a = Math.min.apply(null, rooms.map((r) => r.y)) - 0.25;
+      let b = Math.max.apply(null, rooms.map((r) => r.y + r.h)) + 0.25;
+      const e0 = Math.min(host.y1, host.y2), e1 = Math.max(host.y1, host.y2);
+      let yA = Math.max(e0, a), yB = Math.min(e1, b);
+      if (yB - yA < 4) {
+        const mid = Math.max(e0, Math.min(e1, (a + b) / 2));
+        const half = Math.min((e1 - e0) / 2, Math.max(4, (b - a) / 2));
+        yA = Math.max(e0, mid - half);
+        yB = Math.min(e1, mid + half);
+        if (yB - yA < 3) { yA = e0; yB = e1; }
+      }
+      return { x1: x, y1: yA, x2: x, y2: yB };
+    }
+
+    function shortSegOnHost(host, at, len) {
+      const horiz = hostIsHoriz(host);
+      const half = (len || 2.5) / 2;
+      const pt = projectOntoHost(at, host);
+      if (horiz) {
+        const e0 = Math.min(host.x1, host.x2), e1 = Math.max(host.x1, host.x2);
+        const y = (host.y1 + host.y2) / 2;
+        let a = Math.max(e0, pt.x - half), b = Math.min(e1, pt.x + half);
+        if (b - a < 1) { a = Math.max(e0, pt.x - 0.75); b = Math.min(e1, a + 1.5); }
+        return { x1: a, y1: y, x2: b, y2: y };
+      }
+      const e0 = Math.min(host.y1, host.y2), e1 = Math.max(host.y1, host.y2);
+      const x = (host.x1 + host.x2) / 2;
+      let a = Math.max(e0, pt.y - half), b = Math.min(e1, pt.y + half);
+      if (b - a < 1) { a = Math.max(e0, pt.y - 0.75); b = Math.min(e1, a + 1.5); }
+      return { x1: x, y1: a, x2: x, y2: b };
+    }
+
+    function defaultTieHeightFt() {
+      let plate = 8;
+      state.rooms.forEach((r) => {
+        const h = (r.wallHeightFt > 0) ? Number(r.wallHeightFt) : 8;
+        if (h > plate) plate = h;
+      });
+      // EXAMPLE: existing massing wall is 9 ft with a 5/12 roof. Default the
+      // tie above that plate so the addition roof ramps into the existing roof.
+      const ehPlate = 9;
+      return Math.round(Math.max(ehPlate + 3, plate + 1.5) * 2) / 2;
+    }
+
+    function makeTie(opts) {
+      opts = opts || {};
+      const host = opts.host;
+      if (!host) return null;
+      const kind = opts.kind === 'point' ? 'point' : 'line';
+      const heightFt = (opts.heightFt > 0)
+        ? Math.max(4, Math.min(40, Number(opts.heightFt)))
+        : defaultTieHeightFt();
+      let seg = opts.seg || null;
+      if (!seg) {
+        seg = kind === 'point'
+          ? shortSegOnHost(host, opts.at || { x: (host.x1 + host.x2) / 2, y: (host.y1 + host.y2) / 2 }, 2.5)
+          : additionSpanOnHost(host);
+      }
+      return {
+        kind,
+        x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2,
+        heightFt,
+        host: { side: host.side, x1: host.x1, y1: host.y1, x2: host.x2, y2: host.y2 },
+      };
+    }
+
+    function setRoofTieIn(spec) {
+      if (!state.existingHouse) {
+        if (hooks.onToast) hooks.onToast('Place the existing house before a roof tie-in');
+        return null;
+      }
+      spec = spec || {};
+      const at = {
+        x: spec.x != null ? Number(spec.x) : (spec.x1 != null ? (Number(spec.x1) + Number(spec.x2)) / 2 : null),
+        y: spec.y != null ? Number(spec.y) : (spec.y1 != null ? (Number(spec.y1) + Number(spec.y2)) / 2 : null),
+      };
+      const edge = (at.x != null) ? nearestHouseEdge(at) : (state.roofTieIn && state.roofTieIn.host
+        ? nearestHouseEdge({ x: (state.roofTieIn.x1 + state.roofTieIn.x2) / 2, y: (state.roofTieIn.y1 + state.roofTieIn.y2) / 2 })
+        : null);
+      if (!edge) {
+        if (hooks.onToast) hooks.onToast('Tap an existing-house wall for the tie-in');
+        return null;
+      }
+      // Reject clicks far from the house (a room interior, etc.)
+      if (edge.d > 3.5 && spec.x != null) {
+        if (hooks.onToast) hooks.onToast('Tap the existing house wall — tie-in follows that edge');
+        return null;
+      }
+      pushHistory();
+      const kind = spec.kind === 'point' ? 'point' : 'line';
+      let seg = null;
+      if (spec.x1 != null && spec.y1 != null && spec.x2 != null && spec.y2 != null && spec.custom) {
+        const p1 = projectOntoHost({ x: spec.x1, y: spec.y1 }, edge);
+        const p2 = projectOntoHost({ x: spec.x2, y: spec.y2 }, edge);
+        seg = { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
+      }
+      state.roofTieIn = makeTie({
+        host: edge,
+        kind: seg && Math.hypot(seg.x2 - seg.x1, seg.y2 - seg.y1) < 2.2 ? 'point' : kind,
+        heightFt: spec.heightFt,
+        at: edge.proj || at,
+        seg,
+      });
+      state.selected = { type: 'roofTie', id: 'tie' };
+      notify();
+      draw();
+      if (!spec.silent && hooks.onToast) {
+        const t = state.roofTieIn;
+        hooks.onToast((t.kind === 'point' ? 'Tie-in point' : 'Roof tie-in') + ' · ' + t.heightFt + ' ft (EXAMPLE)');
+      }
+      return state.roofTieIn;
+    }
+
+    function updateRoofTie(patch) {
+      const t = state.roofTieIn;
+      if (!t) return null;
+      patch = patch || {};
+      pushHistory();
+      if (patch.heightFt > 0) t.heightFt = Math.max(4, Math.min(40, Number(patch.heightFt)));
+      if (patch.kind === 'point' && t.kind !== 'point' && t.host) {
+        const at = { x: (t.x1 + t.x2) / 2, y: (t.y1 + t.y2) / 2 };
+        const seg = shortSegOnHost(t.host, at, 2.5);
+        t.x1 = seg.x1; t.y1 = seg.y1; t.x2 = seg.x2; t.y2 = seg.y2;
+        t.kind = 'point';
+      } else if (patch.kind === 'line' && t.kind !== 'line' && t.host) {
+        const seg = additionSpanOnHost(t.host);
+        t.x1 = seg.x1; t.y1 = seg.y1; t.x2 = seg.x2; t.y2 = seg.y2;
+        t.kind = 'line';
+      }
+      notify();
+      draw();
+      return t;
+    }
+
+    function hitTieHandle(p) {
+      const t = state.roofTieIn;
+      if (!t || !p) return null;
+      const thresh = 0.9 / (state.zoom || 1);
+      if (dist(p, { x: t.x1, y: t.y1 }) <= thresh) return 'a';
+      if (dist(p, { x: t.x2, y: t.y2 }) <= thresh) return 'b';
+      return null;
+    }
+
+    function moveTieEnd(which, raw) {
+      const t = state.roofTieIn;
+      if (!t || !t.host) return;
+      const p = projectOntoHost(raw, t.host);
+      if (which === 'a') { t.x1 = p.x; t.y1 = p.y; }
+      else { t.x2 = p.x; t.y2 = p.y; }
+      const len = Math.hypot(t.x2 - t.x1, t.y2 - t.y1);
+      t.kind = len < 2.2 ? 'point' : 'line';
+    }
+
+    function slideTie(drawing, raw) {
+      const t = state.roofTieIn;
+      if (!t || !t.host || !drawing) return;
+      const horiz = hostIsHoriz(t.host);
+      const delta = horiz ? (raw.x - drawing.ox) : (raw.y - drawing.oy);
+      let x1 = drawing.x1, y1 = drawing.y1, x2 = drawing.x2, y2 = drawing.y2;
+      if (horiz) { x1 += delta; x2 += delta; }
+      else { y1 += delta; y2 += delta; }
+      const p1 = projectOntoHost({ x: x1, y: y1 }, t.host);
+      const p2 = projectOntoHost({ x: x2, y: y2 }, t.host);
+      t.x1 = p1.x; t.y1 = p1.y; t.x2 = p2.x; t.y2 = p2.y;
     }
 
     function applyRoomResize(room, handle, worldPt) {
@@ -1013,6 +1263,12 @@
       if (stairHit) return stairHit;
       const deckHit = hitTestDeck(p);
       if (deckHit) return deckHit;
+      if (state.roofTieIn) {
+        const t = state.roofTieIn;
+        const near = pointNearSegment(p, { x: t.x1, y: t.y1 }, { x: t.x2, y: t.y2 });
+        const handle = hitTieHandle(p);
+        if (handle || near.d < 0.85 / (state.zoom || 1)) return { type: 'roofTie', id: 'tie' };
+      }
       // windows
       for (const win of state.windows) {
         const w = state.walls.find((x) => x.id === win.wallId);
@@ -1053,6 +1309,7 @@
       if (type === 'deck') return state.decks.find((d) => d.id === id) || null;
       if (type === 'stairs') return state.stairs.find((s) => s.id === id) || null;
       if (type === 'roofline') return state.rooflines.find((r) => r.id === id) || null;
+      if (type === 'roofTie') return state.roofTieIn;
       return null;
     }
 
@@ -1087,6 +1344,7 @@
       if (type === 'deck') state.decks = state.decks.filter((d) => d.id !== id);
       if (type === 'stairs') state.stairs = state.stairs.filter((s) => s.id !== id);
       if (type === 'roofline') state.rooflines = state.rooflines.filter((r) => r.id !== id);
+      if (type === 'roofTie') state.roofTieIn = null;
       state.selected = null;
       notify();
       draw();
@@ -1100,11 +1358,16 @@
         if (props.width != null && props.width > 0) obj.w = Math.max(ROOM_MIN_FT, snapVal(props.width));
         if (props.length != null && props.length > 0) obj.h = Math.max(ROOM_MIN_FT, snapVal(props.length));
         if (props.heightFt != null && props.heightFt > 0) {
-          const h = Number(props.heightFt);
+          const h = Math.max(1, Math.min(30, Number(props.heightFt)));
+          obj.wallHeightFt = h;
           obj.wallHeights = { north: h, east: h, south: h, west: h };
           state.walls.filter((w) => w.roomId === obj.id).forEach((w) => { w.heightFt = h; });
         }
         syncRoomWalls(obj);
+      } else if (state.selected.type === 'roofTie') {
+        if (props.heightFt != null && props.heightFt > 0 && state.roofTieIn) {
+          state.roofTieIn.heightFt = Math.max(4, Math.min(40, Number(props.heightFt)));
+        }
       } else if (state.selected.type === 'wall') {
         if (props.name != null) obj.name = props.name;
         if (props.heightFt != null && props.heightFt > 0) {
@@ -1359,6 +1622,7 @@
         roofPitchLabel: state.roofPitchLabel,
         roofStyle: state.roofStyle,
         existingHouse: state.existingHouse ? { ...state.existingHouse } : null,
+        roofTieIn: state.roofTieIn ? JSON.parse(JSON.stringify(state.roofTieIn)) : null,
         view: { zoom: state.zoom, panX: state.panX, panY: state.panY },
       };
     }
@@ -1376,6 +1640,14 @@
       state.roofPitchLabel = data.roofPitchLabel || null;
       state.roofStyle = data.roofStyle || null;
       state.existingHouse = data.existingHouse ? { ...data.existingHouse } : null;
+      state.roofTieIn = data.roofTieIn ? JSON.parse(JSON.stringify(data.roofTieIn)) : null;
+      state.rooms.forEach((r) => {
+        if (!(r.wallHeightFt > 0)) {
+          const h = r.wallHeights || {};
+          const vals = ROOM_SIDES.map((side) => Number(h[side])).filter((v) => v > 0);
+          r.wallHeightFt = vals.length ? Math.max.apply(null, vals) : DEFAULT_WALL_HEIGHT_FT;
+        }
+      });
       if (data.view) {
         state.zoom = data.view.zoom || 1;
         state.panX = data.view.panX ?? 40;
@@ -1422,7 +1694,7 @@
     function isEmpty() {
       return !state.walls.length && !state.rooms.length && !state.windows.length
         && !state.fixtures.length && !state.decks.length && !state.stairs.length
-        && !state.rooflines.length && !state.existingHouse;
+        && !state.rooflines.length && !state.existingHouse && !state.roofTieIn;
     }
 
     // ---- drawing ----
@@ -1465,6 +1737,62 @@
         ctx.beginPath();
         ctx.moveTo(0, y + 0.5);
         ctx.lineTo(cssW, y + 0.5);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawRoofTie() {
+      const preview = state.drawing && state.drawing.kind === 'tiein' ? state.drawing : null;
+      const t = state.roofTieIn;
+      ctx.save();
+      if (t) {
+        const sel = state.selected && state.selected.type === 'roofTie';
+        const a = toScreen(t.x1, t.y1);
+        const b = toScreen(t.x2, t.y2);
+        ctx.strokeStyle = sel ? '#9a3412' : '#c2410c';
+        ctx.lineWidth = sel ? 5 : 4;
+        ctx.setLineDash([8, 5]);
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        [a, b].forEach((pt) => {
+          ctx.fillStyle = '#fff7ed';
+          ctx.strokeStyle = '#c2410c';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, 6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        });
+        if (t.kind === 'point') {
+          const m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+          ctx.fillStyle = '#c2410c';
+          ctx.beginPath();
+          ctx.arc(m.x, m.y, 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = '#7c2d12';
+        ctx.font = '700 12px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        const label = (t.kind === 'point' ? 'Tie-in point' : 'Roof tie-in') + ' · ' + t.heightFt + ' ft';
+        ctx.fillText(label, (a.x + b.x) / 2, Math.min(a.y, b.y) - 8);
+      }
+      if (preview && preview.edge) {
+        const p1 = projectOntoHost(preview.start, preview.edge);
+        const p2 = projectOntoHost(preview.current || preview.start, preview.edge);
+        const a = toScreen(p1.x, p1.y);
+        const b = toScreen(p2.x, p2.y);
+        ctx.strokeStyle = '#ea580c';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
         ctx.stroke();
       }
       ctx.restore();
@@ -1533,13 +1861,17 @@
         ctx.font = '12px system-ui, sans-serif';
         const dims = `${Math.abs(r.w).toFixed(1)} × ${Math.abs(r.h).toFixed(1)} ft`;
         ctx.fillText(dims, (a.x + b.x) / 2, (a.y + b.y) / 2 + 6);
+        const studH = (r.wallHeightFt > 0) ? r.wallHeightFt : DEFAULT_WALL_HEIGHT_FT;
+        ctx.fillStyle = '#2f6f6a';
+        ctx.font = '600 11px system-ui, sans-serif';
+        ctx.fillText('Studs ' + (Math.round(studH * 10) / 10) + ' ft', (a.x + b.x) / 2, (a.y + b.y) / 2 + 20);
         const rLabel = r.roofPitchLabel || (r === state.rooms[0] ? state.roofPitchLabel : null);
         const rStyle = r.roofStyle || (r === state.rooms[0] ? state.roofStyle : null);
         if (rLabel || rStyle) {
           const roofTxt = 'Roof · ' + (rLabel || '') + (rStyle ? ' ' + rStyle : '');
           ctx.fillStyle = '#8a4b32';
           ctx.font = '600 11px system-ui, sans-serif';
-          ctx.fillText(roofTxt.trim(), (a.x + b.x) / 2, (a.y + b.y) / 2 + 20);
+          ctx.fillText(roofTxt.trim(), (a.x + b.x) / 2, (a.y + b.y) / 2 + 34);
         }
       }
 
@@ -1562,6 +1894,8 @@
         ctx.lineTo(b.x, b.y);
         ctx.stroke();
       }
+
+      drawRoofTie();
 
       // openings — windows (tick) vs doors (gap + swing arc)
       for (const win of state.windows) {
@@ -1999,6 +2333,32 @@
       const p = snapPoint(raw);
       try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
 
+      // Roof tie-in tool: mark a line (click) or segment (drag) on the existing house.
+      if (state.tool === 'tiein') {
+        if (!state.existingHouse) {
+          if (hooks.onToast) hooks.onToast('Place the existing house before a roof tie-in');
+          return;
+        }
+        const handle = state.roofTieIn ? hitTieHandle(raw) : null;
+        if (handle) {
+          state.selected = { type: 'roofTie', id: 'tie' };
+          state.drawing = { kind: 'move-tie-end', which: handle, moved: false };
+          notify();
+          draw();
+          return;
+        }
+        const edge = nearestHouseEdge(raw);
+        if (!edge || edge.d > 3.5) {
+          if (hooks.onToast) hooks.onToast('Tap the existing house wall where the roof should tie in');
+          draw();
+          return;
+        }
+        state.drawing = { kind: 'tiein', start: raw, current: raw, edge, moved: false };
+        draw();
+        updateDrawChrome();
+        return;
+      }
+
       // Resize handles win over tool actions when a room is selected
       const handleHit = hitTestResizeHandle(e);
       if (handleHit) {
@@ -2103,6 +2463,19 @@
               id: st.id,
               ox: raw.x - st.x,
               oy: raw.y - st.y,
+              moved: false,
+            };
+          }
+        } else if (hit && hit.type === 'roofTie' && state.roofTieIn) {
+          const handle = hitTieHandle(raw);
+          if (handle) {
+            state.drawing = { kind: 'move-tie-end', which: handle, moved: false };
+          } else {
+            const t = state.roofTieIn;
+            state.drawing = {
+              kind: 'move-tie-slide',
+              ox: raw.x, oy: raw.y,
+              x1: t.x1, y1: t.y1, x2: t.x2, y2: t.y2,
               moved: false,
             };
           }
@@ -2461,6 +2834,26 @@
           notify();
           draw();
         }
+      } else if (state.drawing.kind === 'tiein') {
+        state.drawing.current = raw;
+        if (dist(state.drawing.start, raw) > 0.4) state.drawing.moved = true;
+        draw();
+      } else if (state.drawing.kind === 'move-tie-end') {
+        if (!state.drawing.moved) {
+          pushHistory();
+          state.drawing.moved = true;
+        }
+        moveTieEnd(state.drawing.which, raw);
+        notify();
+        draw();
+      } else if (state.drawing.kind === 'move-tie-slide') {
+        if (!state.drawing.moved) {
+          pushHistory();
+          state.drawing.moved = true;
+        }
+        slideTie(state.drawing, raw);
+        notify();
+        draw();
       } else if (state.drawing.kind === 'move-stairs') {
         const st = state.stairs.find((s) => s.id === state.drawing.id);
         if (st) {
@@ -2556,6 +2949,7 @@
             id: uid('room'),
             name: 'Room ' + n,
             x: x1, y: y1, w, h,
+            wallHeightFt: DEFAULT_WALL_HEIGHT_FT,
             wallHeights: normalizeHeights(null),
             wallIds: [],
           };
@@ -2595,10 +2989,30 @@
         return;
       }
 
+      if (state.drawing.kind === 'tiein') {
+        const drag = state.drawing;
+        const moved = dist(drag.start, p) > 1.2 || drag.moved && dist(drag.start, p) > 0.8;
+        state.drawing = null;
+        if (moved) {
+          setRoofTieIn({
+            x: drag.start.x, y: drag.start.y,
+            x1: drag.start.x, y1: drag.start.y,
+            x2: p.x, y2: p.y,
+            custom: true,
+            kind: 'line',
+          });
+        } else {
+          setRoofTieIn({ x: drag.start.x, y: drag.start.y, kind: 'line' });
+        }
+        try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+        return;
+      }
+
       if (state.drawing.kind === 'move-room' || state.drawing.kind === 'resize-room' ||
           state.drawing.kind === 'move-fixture' || state.drawing.kind === 'move-wall-fixture' ||
           state.drawing.kind === 'move-deck' || state.drawing.kind === 'resize-deck' ||
-          state.drawing.kind === 'move-stairs') {
+          state.drawing.kind === 'move-stairs' ||
+          state.drawing.kind === 'move-tie-end' || state.drawing.kind === 'move-tie-slide') {
         state.drawing = null;
         notify();
         draw();
@@ -2840,6 +3254,7 @@
           x: 10, y: 10,
           w: Number(lFt) || 12,
           h: Number(wFt) || 16,
+          wallHeightFt: 8,
           wallHeights: { north: 8, east: 8, south: 8, west: 8 },
           use: 'other',
         };
@@ -2864,6 +3279,7 @@
       const h = Math.max(1, Number(heightFt) || 8);
       state.rooms.forEach((room) => {
         const heights = { north: h, east: h, south: h, west: h };
+        room.wallHeightFt = h;
         room.wallHeights = heights;
         state.walls.filter((w) => w.roomId === room.id).forEach((w) => { w.heightFt = h; });
       });
@@ -2890,6 +3306,8 @@
           if (room) {
             room.wallHeights = room.wallHeights || {};
             room.wallHeights[wall.side] = h;
+            const vals = ROOM_SIDES.map((s) => Number(room.wallHeights[s])).filter((v) => v > 0);
+            room.wallHeightFt = vals.length ? Math.max.apply(null, vals) : h;
           }
         }
       } else if (opts.side) {
@@ -3122,6 +3540,8 @@
         roofPitch: state.roofPitch,
         roofPitchLabel: state.roofPitchLabel,
         roofStyle: state.roofStyle,
+        existingHouse: state.existingHouse,
+        roofTieIn: state.roofTieIn,
       }));
     }
 
@@ -3142,6 +3562,15 @@
       state.roofPitch = snap.roofPitch != null ? snap.roofPitch : null;
       state.roofPitchLabel = snap.roofPitchLabel || null;
       state.roofStyle = snap.roofStyle || null;
+      if (snap.existingHouse) state.existingHouse = { ...snap.existingHouse };
+      state.roofTieIn = snap.roofTieIn ? JSON.parse(JSON.stringify(snap.roofTieIn)) : null;
+      state.rooms.forEach((r) => {
+        if (!(r.wallHeightFt > 0)) {
+          const h = r.wallHeights || {};
+          const vals = ROOM_SIDES.map((side) => Number(h[side])).filter((v) => v > 0);
+          r.wallHeightFt = vals.length ? Math.max.apply(null, vals) : DEFAULT_WALL_HEIGHT_FT;
+        }
+      });
       state.selected = null;
       notify();
       draw();
@@ -3194,6 +3623,10 @@
       finishCurrentStroke,
       canFinishStroke,
       setRoomWallHeights,
+      setRoomStudHeight,
+      setRoofTieIn,
+      updateRoofTie,
+      getRoofTieIn() { return state.roofTieIn ? JSON.parse(JSON.stringify(state.roofTieIn)) : null; },
       syncRoomWalls,
       setExistingHouse,
       getExistingHouse,

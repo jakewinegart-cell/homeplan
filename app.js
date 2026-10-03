@@ -53,48 +53,51 @@
   const bareBonesMethodChecks = { A: false, B: false, C: false, D: false, E: false };
 
   let pendingWallHeightRoomId = null;
+  let pendingStudChoice = 8;
+
+  function setStudChipActive(ft, custom) {
+    document.querySelectorAll('#stud-height-chips .roof-chip').forEach((btn) => {
+      const on = custom ? btn.dataset.stud === 'custom' : String(btn.dataset.stud) === String(ft);
+      btn.classList.toggle('active', on);
+    });
+    const wrap = document.getElementById('stud-height-custom-wrap');
+    if (wrap) wrap.classList.toggle('hidden', !custom);
+  }
 
   function openWallHeightModal(room) {
-    // Legacy sheet — not auto-opened after place. Still available if called manually.
-    try {
-      if (localStorage.getItem('homeplan.wallHeight.dontAsk') === '1') {
-        pendingWallHeightRoomId = null;
-        return;
-      }
-    } catch (_) {}
     pendingWallHeightRoomId = room && room.id;
     const modal = document.getElementById('wall-height-modal');
     if (!modal || !pendingWallHeightRoomId) return;
-    const heights = (room && room.wallHeights) || {};
-    ['north', 'east', 'south', 'west'].forEach((side) => {
-      const inp = document.getElementById('wh-' + side);
-      if (inp) inp.value = heights[side] != null ? heights[side] : 8;
-    });
+    const current = (room && room.wallHeightFt > 0) ? Number(room.wallHeightFt) : 8;
+    const isCommon = [8, 9, 10].some((n) => Math.abs(n - current) < 0.05);
+    pendingStudChoice = current;
+    const custom = document.getElementById('stud-height-custom');
+    if (custom) custom.value = current;
+    setStudChipActive(isCommon ? current : null, !isCommon);
+    const nameEl = document.getElementById('stud-height-room');
+    if (nameEl) nameEl.textContent = (room && room.name) ? room.name : 'this room';
     modal.hidden = false;
-    const first = document.getElementById('wh-north');
-    if (first) setTimeout(() => first.focus(), 50);
   }
 
-  function readWallHeightFields() {
-    const out = {};
-    ['north', 'east', 'south', 'west'].forEach((side) => {
-      const inp = document.getElementById('wh-' + side);
+  function chosenStudHeight() {
+    const customBtn = document.querySelector('#stud-height-chips .roof-chip[data-stud="custom"]');
+    if (customBtn && customBtn.classList.contains('active')) {
+      const inp = document.getElementById('stud-height-custom');
       const v = inp ? parseFloat(inp.value) : 8;
-      out[side] = (isFinite(v) && v > 0) ? v : 8;
-    });
-    return out;
+      return (isFinite(v) && v > 0) ? v : 8;
+    }
+    const v = Number(pendingStudChoice);
+    return (isFinite(v) && v > 0) ? v : 8;
   }
 
   function closeWallHeightModal(useDefaults) {
     const modal = document.getElementById('wall-height-modal');
     if (modal) modal.hidden = true;
-    if (pendingWallHeightRoomId && floor && floor.setRoomWallHeights) {
-      const heights = useDefaults
-        ? { north: 8, east: 8, south: 8, west: 8 }
-        : readWallHeightFields();
-      floor.setRoomWallHeights(pendingWallHeightRoomId, heights);
+    if (pendingWallHeightRoomId && floor && floor.setRoomStudHeight) {
+      const h = useDefaults ? 8 : chosenStudHeight();
+      floor.setRoomStudHeight(pendingWallHeightRoomId, h);
       schedule3DRebuild();
-      showToast(useDefaults ? 'Walls set to 8 ft' : 'Wall heights saved');
+      showToast('Stud height ' + (Math.round(h * 10) / 10) + ' ft');
     }
     pendingWallHeightRoomId = null;
   }
@@ -103,20 +106,37 @@
     const done = document.getElementById('wall-height-done');
     const cancel = document.getElementById('wall-height-cancel');
     const backdrop = document.getElementById('wall-height-backdrop');
-    const skip = document.getElementById('wall-height-skip');
-    const dontAsk = document.getElementById('wall-height-dont-ask');
+    document.querySelectorAll('#stud-height-chips .roof-chip').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (btn.dataset.stud === 'custom') {
+          setStudChipActive(null, true);
+          const inp = document.getElementById('stud-height-custom');
+          if (inp) inp.focus();
+        } else {
+          pendingStudChoice = Number(btn.dataset.stud) || 8;
+          setStudChipActive(pendingStudChoice, false);
+        }
+      });
+    });
     if (done) done.addEventListener('click', () => closeWallHeightModal(false));
     if (cancel) cancel.addEventListener('click', () => closeWallHeightModal(true));
     if (backdrop) backdrop.addEventListener('click', () => closeWallHeightModal(true));
-    if (skip) skip.addEventListener('click', () => closeWallHeightModal(true));
-    if (dontAsk) {
-      dontAsk.addEventListener('click', () => {
-        try { localStorage.setItem('homeplan.wallHeight.dontAsk', '1'); } catch (_) {}
-        closeWallHeightModal(true);
-      });
-    }
   }
 
+  function syncStudChips(h) {
+    document.querySelectorAll('#prop-stud-chips .roof-chip').forEach((btn) => {
+      btn.classList.toggle('active', Math.abs(Number(btn.dataset.stud) - h) < 0.05);
+    });
+  }
+
+  function syncTieChips(tie) {
+    document.querySelectorAll('#prop-tie-chips .roof-chip').forEach((btn) => {
+      btn.classList.toggle('active', !!(tie && Math.abs(Number(btn.dataset.h) - tie.heightFt) < 0.05));
+    });
+    document.querySelectorAll('#prop-tie-kind .roof-chip').forEach((btn) => {
+      btn.classList.toggle('active', !!(tie && btn.dataset.kind === (tie.kind || 'line')));
+    });
+  }
 
   function showToast(msg) {
     els.toast.textContent = msg;
@@ -197,6 +217,13 @@
           }
           planDirtyFor3d = true;
         },
+        onRoofTieIn(spec) {
+          if (!floor || !floor.setRoofTieIn) return;
+          floor.setRoofTieIn(spec || {});
+          if (view3d && view3d.setTiePickMode) view3d.setTiePickMode(false);
+          schedule3DRebuild();
+        },
+        onToast: showToast,
         onWindowSelect(win) {
           if (!floor) return;
           if (win && win.id) floor.selectById('window', win.id);
@@ -430,9 +457,7 @@
         showFixtureTip(fx);
       },
       onRoomPlaced(room) {
-        // No blocking wall-height sheet — rooms default to 8 ft all sides.
-        // Heights stay editable via Selected props (and wizard).
-        if (room && room.name) showToast(room.name + ' placed · walls 8 ft (edit in Selected)');
+        openWallHeightModal(room);
       },
     });
     window.__hpFloor = floor;
@@ -500,7 +525,59 @@
       els.propHeight.addEventListener('change', () => {
         const h = parseFloat(els.propHeight.value);
         if (!isFinite(h) || h <= 0) return;
+        const sel = floor.getSelectedObject && floor.exportData ? null : null;
+        // Room stud height is per-room; walls still use the same field via updateSelectedProps.
         floor.updateSelectedProps({ heightFt: h });
+        syncStudChips(h);
+        schedule3DRebuild();
+      });
+    }
+    const studChips = document.getElementById('prop-stud-chips');
+    if (studChips) {
+      studChips.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-stud]');
+        if (!btn || !floor) return;
+        const h = Number(btn.dataset.stud);
+        if (!(h > 0)) return;
+        if (els.propHeight) els.propHeight.value = h;
+        if (floor.setRoomStudHeight) {
+          const selObj = null;
+          // setRoomStudHeight needs the room id — read from current selection via export is heavy.
+          // updateSelectedProps applies to the selected room/wall.
+          floor.updateSelectedProps({ heightFt: h });
+        }
+        syncStudChips(h);
+        schedule3DRebuild();
+      });
+    }
+    const tieChips = document.getElementById('prop-tie-chips');
+    if (tieChips) {
+      tieChips.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-h]');
+        if (!btn || !floor || !floor.updateRoofTie) return;
+        const h = Number(btn.dataset.h);
+        const hin = document.getElementById('prop-tie-height');
+        if (hin) hin.value = h;
+        floor.updateRoofTie({ heightFt: h });
+        schedule3DRebuild();
+      });
+    }
+    const tieKind = document.getElementById('prop-tie-kind');
+    if (tieKind) {
+      tieKind.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-kind]');
+        if (!btn || !floor || !floor.updateRoofTie) return;
+        floor.updateRoofTie({ kind: btn.dataset.kind });
+        schedule3DRebuild();
+      });
+    }
+    const tieH = document.getElementById('prop-tie-height');
+    if (tieH) {
+      tieH.addEventListener('change', () => {
+        const h = parseFloat(tieH.value);
+        if (!isFinite(h) || h <= 0 || !floor || !floor.updateRoofTie) return;
+        floor.updateRoofTie({ heightFt: h });
+        schedule3DRebuild();
       });
     }
     document.getElementById('prop-delete').addEventListener('click', () => floor.deleteSelected());
@@ -511,7 +588,8 @@
     els.roomListEmpty.style.display = rooms.length ? 'none' : 'block';
     rooms.forEach((r) => {
       const li = document.createElement('li');
-      li.textContent = `${r.name} · ${r.w.toFixed(1)}×${r.h.toFixed(1)} ft`;
+      const sh = (r.wallHeightFt > 0) ? r.wallHeightFt : 8;
+      li.textContent = `${r.name} · ${r.w.toFixed(1)}×${r.h.toFixed(1)} ft · studs ${sh} ft`;
       li.addEventListener('click', () => floor.selectById('room', r.id));
       els.roomList.appendChild(li);
     });
@@ -534,12 +612,25 @@
       els.propWidth.disabled = false;
       els.propLength.disabled = false;
       if (els.propHeight) {
-        const wh = obj.wallHeights || {};
-        const vals = ['north', 'east', 'south', 'west'].map((s) => Number(wh[s])).filter((v) => isFinite(v) && v > 0);
-        const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 8;
-        els.propHeight.value = Math.round(avg * 10) / 10;
+        const h = (obj.wallHeightFt > 0) ? Number(obj.wallHeightFt) : (() => {
+          const wh = obj.wallHeights || {};
+          const vals = ['north', 'east', 'south', 'west'].map((side) => Number(wh[side])).filter((v) => isFinite(v) && v > 0);
+          return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 8;
+        })();
+        els.propHeight.value = Math.round(h * 10) / 10;
         els.propHeight.disabled = false;
+        syncStudChips(h);
       }
+    } else if (sel.type === 'roofTie') {
+      els.propName.value = obj.kind === 'point' ? 'Tie-in point' : 'Roof tie-in';
+      els.propWidth.value = '';
+      els.propLength.value = '';
+      els.propWidth.disabled = true;
+      els.propLength.disabled = true;
+      if (els.propHeightWrap) els.propHeightWrap.classList.add('hidden');
+      const hin = document.getElementById('prop-tie-height');
+      if (hin) hin.value = obj.heightFt != null ? obj.heightFt : 12;
+      syncTieChips(obj);
     } else if (sel.type === 'fixture') {
       els.propName.value = obj.label || obj.fixtureId || 'Fixture';
       if (obj.planKind === 'wall') {
@@ -595,6 +686,8 @@
         }
       }
     }
+    const tieWrap = document.getElementById('prop-tie-wrap');
+    if (tieWrap) tieWrap.classList.toggle('hidden', !(sel && sel.type === 'roofTie'));
   }
 
 
@@ -797,6 +890,28 @@
     walkthroughDirty = true;
     if (els.saveStatus) els.saveStatus.textContent = 'Unsaved changes — click Save to keep them.';
     showToast('Roof · ' + parsed.label + ' ' + style);
+  }
+
+  function initTieInButtons() {
+    const b3 = document.getElementById('btn-tiein-3d');
+    if (!b3) return;
+    b3.addEventListener('click', () => {
+      ensure3D();
+      if (!floor || !floor.getExistingHouse || !floor.getExistingHouse()) {
+        showToast('Place the existing house before a roof tie-in');
+        return;
+      }
+      if (!view3d || !view3d.setTiePickMode) {
+        showToast('Open 3D to mark a tie-in on the house');
+        return;
+      }
+      const next = !view3d.getTiePickMode();
+      const on = view3d.setTiePickMode(next);
+      b3.classList.toggle('tie-on', !!on);
+      showToast(on
+        ? 'Tap the existing house where the addition roof should meet'
+        : 'Tie-in pick cancelled');
+    });
   }
 
   function initRoofPicker() {
@@ -2585,6 +2700,7 @@
     initWallHeightModal();
     initExistingHouseModal();
     initRoofPicker();
+    initTieInButtons();
     initLookPanel();
     initFoundationPicker();
     initWalkthrough();

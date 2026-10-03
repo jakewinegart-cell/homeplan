@@ -1609,3 +1609,11 @@ button { cursor: pointer; }
 }
 .wt-badge.tip { background: var(--accent-soft); color: var(--accent); }
 
+
+/* roomh1 — stud height + roof tie-in */
+.prop-stud-chips { margin: 0.15rem 0 0.45rem; }
+.prop-stud-chips .roof-chip { min-height: 36px; padding: 0.3rem 0.7rem; }
+#prop-tie-wrap { margin: 0.35rem 0 0.6rem; }
+#prop-tie-wrap .roof-picker-label { margin-top: 0.55rem; }
+#stud-height-custom-wrap { margin-top: 0.75rem; }
+#btn-tiein-3d.tie-on { border-color: #c2410c; color: #9a3412; }

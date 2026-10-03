@@ -6,7 +6,7 @@
   <meta http-equiv="Pragma" content="no-cache" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>HomePlan — Remodel & Additions</title>
-  <link rel="stylesheet" href="styles.css?v=interior1" />
+  <link rel="stylesheet" href="styles.css?v=roomh1" />
 </head>
 <body>
   <div id="app">
@@ -113,6 +113,10 @@
               <span class="tool-icon">⌃</span>
               <span>Roof</span>
             </button>
+            <button type="button" class="tool-btn" data-tool="tiein" id="btn-tiein" title="Mark where the addition roof ties into the existing house">
+              <span class="tool-icon">⌒</span>
+              <span>Tie-in</span>
+            </button>
             <button type="button" class="tool-btn" id="btn-look" title="Look — cladding, roofing, roof style, siding color (EXAMPLE)">
               <span class="tool-icon">◈</span>
               <span>Look</span>
@@ -182,7 +186,30 @@
                 <label>Name <input type="text" id="prop-name" /></label>
                 <label>Width (ft) <input type="number" id="prop-width" step="0.5" min="0" /></label>
                 <label>Length (ft) <input type="number" id="prop-length" step="0.5" min="0" /></label>
-                <label id="prop-height-wrap" class="hidden">Wall height (ft) <input type="number" id="prop-height" step="0.5" min="1" max="30" /></label>
+                <div id="prop-height-wrap" class="hidden">
+                  <div class="roof-picker-label">Stud height (ft)</div>
+                  <div class="roof-chip-row prop-stud-chips" id="prop-stud-chips" role="group" aria-label="Stud height">
+                    <button type="button" class="roof-chip" data-stud="8">8</button>
+                    <button type="button" class="roof-chip" data-stud="9">9</button>
+                    <button type="button" class="roof-chip" data-stud="10">10</button>
+                  </div>
+                  <label>Custom (ft) <input type="number" id="prop-height" step="0.5" min="1" max="30" /></label>
+                </div>
+                <div id="prop-tie-wrap" class="hidden">
+                  <div class="roof-picker-label">Tie-in height</div>
+                  <div class="roof-chip-row" id="prop-tie-chips" role="group" aria-label="Tie-in height">
+                    <button type="button" class="roof-chip" data-h="9">9 ft</button>
+                    <button type="button" class="roof-chip" data-h="10">10 ft</button>
+                    <button type="button" class="roof-chip" data-h="12">12 ft</button>
+                  </div>
+                  <label>Height (ft) <input type="number" id="prop-tie-height" step="0.5" min="4" max="30" value="12" /></label>
+                  <div class="roof-picker-label">Mark</div>
+                  <div class="roof-chip-row" id="prop-tie-kind" role="group" aria-label="Tie-in shape">
+                    <button type="button" class="roof-chip" data-kind="line">Line</button>
+                    <button type="button" class="roof-chip" data-kind="point">Point</button>
+                  </div>
+                  <p class="muted small">EXAMPLE — not engineered. The addition roof slopes up to this mark on the existing house. Outer eaves stay modest.</p>
+                </div>
                 <button type="button" class="btn btn-ghost btn-sm" id="prop-delete">Delete</button>
               </div>
             </div>
@@ -344,6 +371,7 @@
               <button type="button" class="btn btn-sm btn-accent" id="view3d-edit-done">Done</button>
             </div>
             <button type="button" class="btn btn-sm btn-ghost" id="btn-look-3d" title="Look / appearance — cladding, roof, color (EXAMPLE)">Look</button>
+            <button type="button" class="btn btn-sm btn-ghost" id="btn-tiein-3d" title="Tap the existing house where the addition roof should tie in">Tie-in</button>
             <button type="button" class="btn btn-sm btn-ghost" id="btn-foundation-3d" title="Foundation — slab, crawl, basement, or piers / sonotubes">Foundation</button>
             <div class="view3d-toggles">
               <label class="view3d-dims-toggle" title="Toggle dimension labels">
@@ -680,30 +708,23 @@
     </div>
   </div>
 
-  <!-- Wall heights sheet (after room place) -->
+  <!-- Stud height sheet (after room place) -->
   <div id="wall-height-modal" class="modal sheet-modal" hidden>
     <div class="modal-backdrop" id="wall-height-backdrop"></div>
     <div class="modal-card sheet-card" role="dialog" aria-labelledby="wall-height-title">
-      <h2 id="wall-height-title">Wall heights</h2>
-      <p class="muted small">Optional — new rooms default to 8 ft. How tall should each wall be? (feet)</p>
-      <div class="wall-height-fields">
-        <label class="wall-height-field">North <span class="muted">(top)</span>
-          <input type="number" id="wh-north" inputmode="decimal" min="1" max="30" step="0.5" value="8" />
-        </label>
-        <label class="wall-height-field">East <span class="muted">(right)</span>
-          <input type="number" id="wh-east" inputmode="decimal" min="1" max="30" step="0.5" value="8" />
-        </label>
-        <label class="wall-height-field">South <span class="muted">(bottom)</span>
-          <input type="number" id="wh-south" inputmode="decimal" min="1" max="30" step="0.5" value="8" />
-        </label>
-        <label class="wall-height-field">West <span class="muted">(left)</span>
-          <input type="number" id="wh-west" inputmode="decimal" min="1" max="30" step="0.5" value="8" />
-        </label>
+      <h2 id="wall-height-title">Stud height</h2>
+      <p class="muted small">Wall height for <strong id="stud-height-room">this room</strong>. Studs, top plates, and the roof underside use this height — not one global for every room.</p>
+      <div class="roof-chip-row" id="stud-height-chips" role="group" aria-label="Stud height">
+        <button type="button" class="roof-chip active" data-stud="8">8 ft</button>
+        <button type="button" class="roof-chip" data-stud="9">9 ft</button>
+        <button type="button" class="roof-chip" data-stud="10">10 ft</button>
+        <button type="button" class="roof-chip" data-stud="custom">Custom</button>
       </div>
+      <label class="roof-custom-wrap hidden" id="stud-height-custom-wrap">Custom height (ft)
+        <input type="number" id="stud-height-custom" inputmode="decimal" min="6" max="20" step="0.5" value="8" aria-label="Custom stud height" />
+      </label>
       <div class="btn-row wall-height-actions">
-        <button type="button" class="btn btn-ghost" id="wall-height-skip">Skip</button>
-        <button type="button" class="btn btn-ghost" id="wall-height-dont-ask">Don't ask again</button>
-        <button type="button" class="btn btn-ghost" id="wall-height-cancel">Use 8 ft all</button>
+        <button type="button" class="btn btn-ghost" id="wall-height-cancel">Use 8 ft</button>
         <button type="button" class="btn btn-accent" id="wall-height-done">Done</button>
       </div>
     </div>
@@ -745,11 +766,11 @@
     }
   }
   </script>
-  <script src="walkthrough-data.js?v=interior1"></script>
-  <script src="guide-data.js?v=interior1"></script>
-  <script src="floorplan.js?v=interior1"></script>
-  <script src="wizard-data.js?v=interior1"></script>
-  <script type="module" src="view3d.js?v=interior1"></script>
-  <script src="app.js?v=interior1"></script>
+  <script src="walkthrough-data.js?v=roomh1"></script>
+  <script src="guide-data.js?v=roomh1"></script>
+  <script src="floorplan.js?v=roomh1"></script>
+  <script src="wizard-data.js?v=roomh1"></script>
+  <script type="module" src="view3d.js?v=roomh1"></script>
+  <script src="app.js?v=roomh1"></script>
 </body>
 </html>
