@@ -157,6 +157,26 @@
       planKind: 'wall',
       tool: 'outlet',
     },
+    oven_range: {
+      fixtureId: 'oven_range',
+      label: 'Oven / range (EXAMPLE)',
+      depthIn: 27,
+      heightIn: 36,
+      defaultWidthIn: 30,
+      planKind: 'floor',
+      tool: 'appliance',
+      wallSnap: true,
+    },
+    fridge: {
+      fixtureId: 'fridge',
+      label: 'Fridge (EXAMPLE)',
+      depthIn: 30,
+      heightIn: 70,
+      defaultWidthIn: 36,
+      planKind: 'floor',
+      tool: 'appliance',
+      wallSnap: true,
+    },
   };
 
   const FIXTURE_TOOL_DEFAULTS = {
@@ -164,6 +184,7 @@
     cabinet: 'cab_base',
     sink: 'sink_kitchen',
     outlet: 'outlet_duplex',
+    appliance: 'oven_range',
   };
 
   const FIXTURE_TOOL_OPTIONS = {
@@ -171,6 +192,7 @@
     cabinet: ['cab_base', 'cab_upper'],
     sink: ['sink_kitchen', 'sink_bar', 'sink_bath'],
     outlet: ['outlet_duplex', 'switch_single'],
+    appliance: ['oven_range', 'fridge'],
   };
 
   function fixtureDef(id) {
@@ -1803,6 +1825,8 @@
         if (fx.fixtureId === 'cab_base') { fill = 'rgba(120, 140, 160, 0.4)'; stroke = '#4a5a6a'; }
         if (fx.fixtureId === 'cab_upper') { fill = 'rgba(120, 140, 160, 0.22)'; stroke = '#4a5a6a'; }
         if (String(fx.fixtureId).startsWith('sink_')) { fill = 'rgba(140, 180, 200, 0.35)'; stroke = '#3d6b9a'; }
+        if (fx.fixtureId === 'oven_range') { fill = 'rgba(70, 74, 82, 0.5)'; stroke = '#2a2e34'; }
+        if (fx.fixtureId === 'fridge') { fill = 'rgba(190, 200, 210, 0.55)'; stroke = '#5a6570'; }
         if (sel) { fill = 'rgba(47,111,106,0.28)'; stroke = '#2f6f6a'; }
         ctx.fillStyle = fill;
         ctx.strokeStyle = stroke;
@@ -2154,7 +2178,7 @@
         return;
       }
 
-      if (state.tool === 'counter' || state.tool === 'cabinet' || state.tool === 'sink' || state.tool === 'outlet') {
+      if (state.tool === 'counter' || state.tool === 'cabinet' || state.tool === 'sink' || state.tool === 'outlet' || state.tool === 'appliance') {
         // Re-select / move only same-tool fixtures (so sinks can drop on counters; outlets on walls)
         const fxHit = hitTestFixture(raw);
         if (fxHit) {

@@ -12,6 +12,8 @@
  * visual ~13 in) read from interior low/across — not flat top-chord planks.
  * Floor framing span = additionBounds only (wall plates); no overshoot past exterior walls.
  * Roof outline = addition exterior (bounds+WALL_THICK) + clamped eave; plate height roof3.
+ * interior1: Roof toggle (session); oven/fridge placeables; door long-press swing;
+ * opening drag planes use floor-above-grade (ground1 lift); overhang re-verified flush.
  *
  * Realism2: richer procedural albedo+bump (clapboard/brick/shingles), lumber grain,
  * foundation/ground maps, fascia/soffit eave edge, stronger late-morning sun + soft
@@ -150,6 +152,7 @@ function createView3D(container) {
   const dimsToggle = container.querySelector('#view3d-dims-toggle');
   const studsToggle = container.querySelector('#view3d-studs-toggle');
   const floorFramingToggle = container.querySelector('#view3d-floorframing-toggle');
+  const roofToggle = container.querySelector('#view3d-roof-toggle');
   const shadowsToggle = container.querySelector('#view3d-shadows-toggle');
 
   let renderer, scene, camera, controls, animId, rootGroup, labelGroup;
@@ -158,6 +161,10 @@ function createView3D(container) {
   let showStuds = true; // educational overlay — finished look when OFF
   let showFloorFraming = true; // floor trusses / joists under floor (educational) — default ON so depth reads first
   let floorFramingManual = false; // user touched toggle — stop auto foundation default
+  let showRoof = true; // session toggle — default ON (roof visible); hide to place counters from above
+  let lastFloorAboveGrade = 0; // world Y lift of floor plane after foundation (ground1)
+  let doorSwingOpen = new Map(); // winId -> bool (EXAMPLE door leaf swing)
+  let doorSwingAnim = null; // { winId, from, to, t0, dur }
   let shadowsWanted = true; // user preference; auto-killed on narrow/low
   let sunLight = null;
   let hemiLight = null;
@@ -319,6 +326,13 @@ function createView3D(container) {
       });
     }
 
+        if (roofToggle) {
+      roofToggle.checked = showRoof;
+      roofToggle.addEventListener('change', () => {
+        showRoof = !!roofToggle.checked;
+        applyRoofVisibility();
+      });
+    }
     if (shadowsToggle) {
       shadowsToggle.checked = shadowsWanted;
       shadowsToggle.addEventListener('change', () => {
@@ -334,6 +348,7 @@ function createView3D(container) {
     applyShadowMode();
     (function loop() {
       animId = requestAnimationFrame(loop);
+      tickDoorSwing();
       controls.update();
       renderer.render(scene, camera);
     })();
@@ -343,6 +358,20 @@ function createView3D(container) {
     const w = (canvasHost && canvasHost.clientWidth) || window.innerWidth || 1200;
     const lowDpr = (window.devicePixelRatio || 1) < 1.1 && w < 900;
     return w < 700 || lowDpr;
+  }
+
+  function applyRoofVisibility() {
+    if (!rootGroup) return;
+    rootGroup.traverse((o) => {
+      if (!o || !o.userData) return;
+      if (o.userData.type === 'additionRoof') o.visible = !!showRoof;
+    });
+    if (roofToggle) roofToggle.checked = !!showRoof;
+  }
+
+  function setShowRoof(on) {
+    showRoof = !!on;
+    applyRoofVisibility();
   }
 
   function applyShadowMode() {
@@ -2121,7 +2150,6 @@ function createView3D(container) {
     );
     pane.position.set(0, cy, 0);
     pane.castShadow = true;
-    g.add(pane);
 
     const gw = Math.max(0.1, wFt - jamb * 2);
     const gh = Math.max(0.1, hFt - jamb * 2);
@@ -2129,10 +2157,27 @@ function createView3D(container) {
     const glassZ = depth / 2 - 0.015;
     const glass = new THREE.Mesh(new THREE.BoxGeometry(gw, gh, glassDepth), isDoor ? paneMat : glassMat);
     glass.position.set(0, cy, glassZ);
-    g.add(glass);
     const glass2 = new THREE.Mesh(new THREE.BoxGeometry(gw, gh, glassDepth), isDoor ? paneMat : glassMat);
     glass2.position.set(0, cy, -glassZ);
-    g.add(glass2);
+
+    // Door leaf hinged at left jamb (EXAMPLE swing). Windows stay fixed on g.
+    let doorLeaf = null;
+    if (isDoor) {
+      doorLeaf = new THREE.Group();
+      doorLeaf.position.set(-wFt / 2, 0, 0);
+      doorLeaf.userData = { type: 'doorLeaf', winId, openingType: 'door' };
+      // Shift contents so leaf origin is hinge; panel still fills opening when closed
+      pane.position.x += wFt / 2;
+      glass.position.x += wFt / 2;
+      glass2.position.x += wFt / 2;
+      doorLeaf.add(pane, glass, glass2);
+      g.add(doorLeaf);
+      if (winId && doorSwingOpen.get(winId)) {
+        doorLeaf.rotation.y = -Math.PI * 0.72;
+      }
+    } else {
+      g.add(pane, glass, glass2);
+    }
 
     // Casing on BOTH faces (exterior side depends on wall winding)
     const casingT = 0.1;
@@ -2208,14 +2253,17 @@ function createView3D(container) {
         new THREE.BoxGeometry(Math.max(0.2, wFt - 0.2), 0.1, mullD),
         mat(0x5a3d28, { roughness: 0.62, metalness: 0.08 })
       );
-      mullH.position.set(0, sill + hFt * 0.4, mullZ);
-      g.add(mullH);
+      mullH.position.set(wFt / 2, sill + hFt * 0.4, mullZ);
       mull = new THREE.Mesh(
         new THREE.BoxGeometry(0.07, Math.max(0.2, hFt * 0.28), 0.08),
         mat(0xc4a882, { roughness: 0.48, metalness: 0.38 })
       );
-      mull.position.set(wFt * 0.32, cy, mullZ + 0.02);
-      g.add(mull);
+      mull.position.set(wFt / 2 + wFt * 0.32, cy, mullZ + 0.02);
+      if (doorLeaf) {
+        doorLeaf.add(mullH, mull);
+      } else {
+        g.add(mullH, mull);
+      }
     } else {
       const sashH = narrow ? 0.045 : 0.06;
       mullH = new THREE.Mesh(new THREE.BoxGeometry(Math.max(0.08, gw), sashH, mullD), frameMat);
@@ -2257,6 +2305,7 @@ function createView3D(container) {
       const openType = opts.openingType || (isDoor ? 'door' : 'window');
       const tag = { type: 'window', winId, openingType: openType };
       g.userData = tag;
+      if (doorLeaf) doorLeaf.userData = Object.assign({}, tag, { type: 'window', doorLeaf: true });
       [pane, glass, glass2, frame, casA.L, casA.R, casA.T, casA.B, casB.L, casB.R, casB.T, casB.B,
         mull, mull2, mullH, mullH2, sillMesh, sillLip, sillLip2].forEach((m) => {
         if (m) m.userData = tag;
@@ -2284,7 +2333,7 @@ function createView3D(container) {
       interactiveObjects.push(leftH, rightH, topH);
 
       windowMeshes.set(winId, {
-        group: g, glass, glass2, frame, pane,
+        group: g, glass, glass2, frame, pane, doorLeaf,
         mull, mull2, mullH, mullH2,
         casingL: casA.L, casingR: casA.R, casingTop: casA.T, casingBot: casA.B,
         casingL2: casB.L, casingR2: casB.R, casingTop2: casB.T, casingBot2: casB.B,
@@ -2741,6 +2790,77 @@ function createView3D(container) {
         return;
       }
 
+      if (id === 'oven_range') {
+        const h = ((fx.heightIn != null ? fx.heightIn : 36) / 12);
+        const g = new THREE.Group();
+        g.position.set(cx, 0, cz);
+        g.rotation.y = -rot;
+        g.userData = { type: 'fixture', fixtureId: id, id: fx.id };
+        const bodyMat = mat(0x3a3e44, { roughness: 0.55, metalness: 0.35 });
+        const glassMatO = mat(0x1a2228, { roughness: 0.25, metalness: 0.2 });
+        const handleMat = mat(0xc8cdd2, { roughness: 0.35, metalness: 0.55 });
+        const body = new THREE.Mesh(new THREE.BoxGeometry(widthFt, h, depthFt), bodyMat);
+        body.position.y = h / 2;
+        body.castShadow = true;
+        body.receiveShadow = true;
+        g.add(body);
+        // Oven door glass cue
+        const door = new THREE.Mesh(
+          new THREE.BoxGeometry(widthFt * 0.78, h * 0.48, 0.04),
+          glassMatO
+        );
+        door.position.set(0, h * 0.38, depthFt / 2 + 0.02);
+        g.add(door);
+        const handle = new THREE.Mesh(
+          new THREE.BoxGeometry(widthFt * 0.55, 0.05, 0.05),
+          handleMat
+        );
+        handle.position.set(0, h * 0.62, depthFt / 2 + 0.06);
+        g.add(handle);
+        // Cooktop knobs strip
+        const strip = new THREE.Mesh(
+          new THREE.BoxGeometry(widthFt * 0.9, 0.06, depthFt * 0.35),
+          mat(0x2a2e32, { roughness: 0.5, metalness: 0.4 })
+        );
+        strip.position.set(0, h + 0.02, -depthFt * 0.15);
+        g.add(strip);
+        group.add(g);
+        return;
+      }
+
+      if (id === 'fridge') {
+        const h = ((fx.heightIn != null ? fx.heightIn : 70) / 12);
+        const g = new THREE.Group();
+        g.position.set(cx, 0, cz);
+        g.rotation.y = -rot;
+        g.userData = { type: 'fixture', fixtureId: id, id: fx.id };
+        const bodyMat = mat(0xd8dde2, { roughness: 0.42, metalness: 0.28 });
+        const darkMat = mat(0x4a5056, { roughness: 0.5, metalness: 0.2 });
+        const body = new THREE.Mesh(new THREE.BoxGeometry(widthFt, h, depthFt), bodyMat);
+        body.position.y = h / 2;
+        body.castShadow = true;
+        body.receiveShadow = true;
+        g.add(body);
+        // Freezer / fridge split seam
+        const seam = new THREE.Mesh(
+          new THREE.BoxGeometry(widthFt * 0.96, 0.03, 0.04),
+          darkMat
+        );
+        seam.position.set(0, h * 0.68, depthFt / 2 + 0.01);
+        g.add(seam);
+        // Handles
+        [[h * 0.82], [h * 0.4]].forEach((yy) => {
+          const handle = new THREE.Mesh(
+            new THREE.BoxGeometry(0.04, h * 0.12, 0.05),
+            darkMat
+          );
+          handle.position.set(widthFt * 0.38, yy[0], depthFt / 2 + 0.04);
+          g.add(handle);
+        });
+        group.add(g);
+        return;
+      }
+
       if (id === 'sink_kitchen' || id === 'sink_bar' || id === 'sink_bath') {
         const topAff = 36 / 12;
         const basinD = Math.min(depthFt * 0.72, widthFt * 0.8);
@@ -2992,6 +3112,7 @@ function createView3D(container) {
     hidePartTag();
     clearLongPress();
     longPressShown = false;
+    lastFloorAboveGrade = 0;
     clearRoot();
     rootGroup = new THREE.Group();
     scene.add(rootGroup);
@@ -3313,6 +3434,7 @@ function createView3D(container) {
         gRoof.position.set(ab.cx - ox, 0, ab.cy - oz);
         gRoof.userData = { type: 'additionRoof' };
         addRoof(gRoof, roofW, roofD, maxWallH, pitch, eaveIn, roofMat, store.roof_tie_in, roofStyle);
+        gRoof.visible = !!showRoof;
         rootGroup.add(gRoof);
       }
 
@@ -3380,11 +3502,12 @@ function createView3D(container) {
           if (showFloorFraming) {
             const padH = SLAB_PAD_H;
             const beamBot = -0.02 - FLOOR_IBEAM_H;
-            boxAt(fW + 0.5, padH, fD + 0.5,
+            // Pad = addition exterior (centerline + WALL_THICK), not past walls
+            boxAt(fW + WALL_THICK, padH, fD + WALL_THICK,
               fcx, beamBot - padH / 2 - 0.02, fcz, foundMat, rootGroup,
               { type: 'foundation', label: 'Foundation' });
           } else {
-            boxAt(fW + 0.5, FOUND_REVEAL_SLAB, fD + 0.5,
+            boxAt(fW + WALL_THICK, FOUND_REVEAL_SLAB, fD + WALL_THICK,
               fcx, -FOUND_REVEAL_SLAB / 2, fcz, foundMat, rootGroup,
               { type: 'foundation', label: 'Foundation' });
           }
@@ -3392,12 +3515,12 @@ function createView3D(container) {
           liftRootToGrade(rootGroup, floorAboveGrade);
         } else if (abFound && ft === 'crawl') {
           // Stem built below local floor; lift so stem bottom sits ON grade
-          addStemWallRing(fcx, fcz, fW + 0.5, fD + 0.5, 2.5, -2.5, foundMat, rootGroup);
+          addStemWallRing(fcx, fcz, fW + WALL_THICK, fD + WALL_THICK, 2.5, -2.5, foundMat, rootGroup);
           floorAboveGrade = 2.5;
           liftRootToGrade(rootGroup, floorAboveGrade);
         } else if (abFound && ft === 'basement') {
           // Stem intentionally below grade; floor stays at GRADE_Y (no lift)
-          addStemWallRing(fcx, fcz, fW + 0.5, fD + 0.5, 8, -8, foundMat, rootGroup);
+          addStemWallRing(fcx, fcz, fW + WALL_THICK, fD + WALL_THICK, 8, -8, foundMat, rootGroup);
           floorAboveGrade = 0.75; // modest door/deck step only
         }
         // Stairs from grade up to elevated floor / deck top (world-absolute, not double-lifted)
@@ -3407,6 +3530,7 @@ function createView3D(container) {
           stringerMat: lumberMat,
         });
         if (floorAboveGrade > 0) focusY += floorAboveGrade;
+        lastFloorAboveGrade = floorAboveGrade || 0;
       }
     } else {
       // No walls/rooms: show only what Plan actually has (decks / stairs / existing house).
@@ -3466,6 +3590,7 @@ function createView3D(container) {
         stringerMat: lumberMat,
       });
       focusY += stairRise * 0.35;
+      lastFloorAboveGrade = stairRise;
 
       if (!keepCam) controls.target.set(focusLocalX, focusY, focusLocalZ);
     }
@@ -3506,6 +3631,37 @@ function createView3D(container) {
     preserveCamera = false;
   }
 
+
+  // ---- Door swing (EXAMPLE long-press) ----
+  const DOOR_SWING_ANGLE = -Math.PI * 0.72;
+  const DOOR_SWING_MS = 420;
+
+  function tickDoorSwing() {
+    if (!doorSwingAnim) return;
+    const a = doorSwingAnim;
+    const rec = windowMeshes.get(a.winId);
+    if (!rec || !rec.doorLeaf) {
+      doorSwingAnim = null;
+      return;
+    }
+    const u = Math.min(1, (performance.now() - a.t0) / a.dur);
+    const ease = u * u * (3 - 2 * u);
+    rec.doorLeaf.rotation.y = a.from + (a.to - a.from) * ease;
+    if (u >= 1) doorSwingAnim = null;
+  }
+
+  function toggleDoorSwing(winId) {
+    if (!winId) return false;
+    const rec = windowMeshes.get(winId);
+    if (!rec || !rec.doorLeaf) return false;
+    const open = !doorSwingOpen.get(winId);
+    doorSwingOpen.set(winId, open);
+    const from = rec.doorLeaf.rotation.y;
+    const to = open ? DOOR_SWING_ANGLE : 0;
+    doorSwingAnim = { winId, from, to, t0: performance.now(), dur: DOOR_SWING_MS };
+    return true;
+  }
+
   // ---- Part tag / long-press naming ----
   const SKIP_TAG_TYPES = new Set(['ground', 'framingRoot', 'roFraming', 'winHandle']);
 
@@ -3526,6 +3682,8 @@ function createView3D(container) {
       sink_kitchen: 'Kitchen sink',
       sink_bar: 'Bar sink',
       sink_bath: 'Bath sink',
+      oven_range: 'Oven / range',
+      fridge: 'Fridge',
     };
     return map[fixtureId] || 'Fixture';
   }
@@ -3678,6 +3836,11 @@ function createView3D(container) {
     if (controls) controls.enabled = false;
     lastTapDown = null;
     pendingEmptyExit = null;
+    // Door long-press: EXAMPLE swing open/close (label still shows)
+    const ud = picked && picked.userData;
+    if (ud && ud.type === 'window' && (ud.openingType === 'door' || ud.openingType === 'large') && ud.winId) {
+      toggleDoorSwing(ud.winId);
+    }
     showPartTag(label, x, y);
     return true;
   }
@@ -3942,7 +4105,7 @@ function createView3D(container) {
     } else if (dragState.mode === 'resizeW') {
       setPointerFromEvent(e);
       raycaster.setFromCamera(pointer, camera);
-      const y = win.sillFt + win.heightFt / 2;
+      const y = win.sillFt + win.heightFt / 2 + (lastFloorAboveGrade || 0);
       plane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, y, 0));
       const pt = new THREE.Vector3();
       if (raycaster.ray.intersectPlane(plane, pt)) {
@@ -3975,7 +4138,7 @@ function createView3D(container) {
       plane.setFromNormalAndCoplanarPoint(new THREE.Vector3(nx, 0, nz), new THREE.Vector3(cx, 0, cz));
       const pt = new THREE.Vector3();
       if (raycaster.ray.intersectPlane(plane, pt)) {
-        let newH = pt.y - win.sillFt;
+        let newH = pt.y - (win.sillFt + (lastFloorAboveGrade || 0));
         newH = Math.max(MIN_OPENING_H_FT, Math.min(wallH - win.sillFt - 0.2, newH));
         applyLocalWin(dragState.winId, { heightFt: Math.round(newH * 20) / 20 }, { live: true });
       }
@@ -4075,7 +4238,9 @@ function createView3D(container) {
     setPointerFromEvent(e);
     raycaster.setFromCamera(pointer, camera);
     const win = getWinData(dragState.winId);
-    const y = win ? (win.sillFt + win.heightFt / 2) : 4;
+    // World Y must include foundation lift (ground1); openings live on elevated floor.
+    const yLocal = win ? (win.sillFt + win.heightFt / 2) : 4;
+    const y = yLocal + (lastFloorAboveGrade || 0);
     plane.setFromNormalAndCoplanarPoint(
       new THREE.Vector3(0, 1, 0),
       new THREE.Vector3(0, y, 0)
@@ -4115,7 +4280,8 @@ function createView3D(container) {
     const hFt = Math.min(win.heightFt, wallHeight - sill - 0.15);
     const wFt = Math.min(win.widthFt, wallLen * 0.9);
 
-    rec.group.position.set(mx, 0, mz);
+    // Keep foundation lift (ground1): openings are rootGroup children raised by lastFloorAboveGrade
+    rec.group.position.set(mx, lastFloorAboveGrade || 0, mz);
     rec.group.rotation.y = -ang;
 
     const sizeChanged = Math.abs(rec.wFt - wFt) > 1e-4
@@ -4157,20 +4323,25 @@ function createView3D(container) {
       }
     }
 
+    // Door leaf hinge at left jamb — panel contents offset by +wFt/2 in leaf space
+    const leafX = (isDoor && rec.doorLeaf) ? (wFt / 2) : 0;
+    if (rec.doorLeaf) {
+      rec.doorLeaf.position.set(-wFt / 2, 0, 0);
+    }
     if (rec.pane) {
       rec.pane.geometry.dispose();
       rec.pane.geometry = new THREE.BoxGeometry(Math.max(0.15, wFt - 0.04), Math.max(0.15, hFt - 0.04), depth);
-      rec.pane.position.set(0, cy, 0);
+      rec.pane.position.set(leafX, cy, 0);
     }
     if (rec.glass) {
       rec.glass.geometry.dispose();
       rec.glass.geometry = new THREE.BoxGeometry(gw, gh, glassDepth);
-      rec.glass.position.set(0, cy, glassZ);
+      rec.glass.position.set(leafX, cy, glassZ);
     }
     if (rec.glass2) {
       rec.glass2.geometry.dispose();
       rec.glass2.geometry = new THREE.BoxGeometry(gw, gh, glassDepth);
-      rec.glass2.position.set(0, cy, -glassZ);
+      rec.glass2.position.set(leafX, cy, -glassZ);
     }
     resizeCasing(rec.casingL, 'L', 1);
     resizeCasing(rec.casingR, 'R', 1);
@@ -4202,7 +4373,7 @@ function createView3D(container) {
       rec.mullH.geometry.dispose();
       if (isDoor) {
         rec.mullH.geometry = new THREE.BoxGeometry(Math.max(0.2, wFt - 0.2), 0.1, mullD);
-        rec.mullH.position.set(0, sill + hFt * 0.4, mullZ);
+        rec.mullH.position.set(leafX, sill + hFt * 0.4, mullZ);
       } else {
         rec.mullH.geometry = new THREE.BoxGeometry(Math.max(0.08, gw), sashH, mullD);
         rec.mullH.position.set(0, cy, mullZ);
@@ -4218,7 +4389,7 @@ function createView3D(container) {
       rec.mull.geometry.dispose();
       if (isDoor) {
         rec.mull.geometry = new THREE.BoxGeometry(0.07, Math.max(0.2, hFt * 0.28), 0.08);
-        rec.mull.position.set(wFt * 0.32, cy, mullZ + 0.02);
+        rec.mull.position.set(leafX + wFt * 0.32, cy, mullZ + 0.02);
         rec.mull.visible = true;
       } else if (narrow) {
         rec.mull.visible = false;
@@ -4982,6 +5153,9 @@ function createView3D(container) {
     getShowStuds: () => showStuds,
     setShowFloorFraming,
     getShowFloorFraming: () => showFloorFraming,
+    setShowRoof,
+    getShowRoof: () => showRoof,
+    debugToggleDoorSwing: toggleDoorSwing,
     setShowShadows: (on) => { shadowsWanted = !!on; if (shadowsToggle) shadowsToggle.checked = shadowsWanted; applyShadowMode(); },
     getShowShadows: () => !!shadowsWanted && !shadowsAutoOff(),
     debugSetCamera,

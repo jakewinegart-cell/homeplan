@@ -6,7 +6,7 @@
   <meta http-equiv="Pragma" content="no-cache" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>HomePlan — Remodel & Additions</title>
-  <link rel="stylesheet" href="styles.css?v=ground1" />
+  <link rel="stylesheet" href="styles.css?v=interior1" />
 </head>
 <body>
   <div id="app">
@@ -95,6 +95,10 @@
               <span class="tool-icon">⊞</span>
               <span>Outlet</span>
             </button>
+            <button type="button" class="tool-btn" data-tool="appliance" title="Place oven or fridge (EXAMPLE)">
+              <span class="tool-icon">▤</span>
+              <span>Appliance</span>
+            </button>
             <div class="tool-divider"></div>
             <button type="button" class="tool-btn" data-tool="deck" title="Place deck (EXAMPLE · default 8×10 ft)">
               <span class="tool-icon">▦</span>
@@ -146,7 +150,7 @@
             <div id="empty-tip" class="empty-tip">
               <button type="button" class="empty-tip-dismiss" id="btn-dismiss-tip" aria-label="Dismiss">×</button>
               <strong>Start your floor plan</strong>
-              <p>Tap <strong>Existing</strong> to place the old house, or drag a room rectangle. Tools: Wall / Window / Counter / Cabinet / Sink / Outlet / Deck / Stairs / Roof.</p>
+              <p>Tap <strong>Existing</strong> to place the old house, or drag a room rectangle. Tools: Wall / Window / Counter / Cabinet / Sink / Outlet / Appliance / Deck / Stairs / Roof.</p>
               <div class="empty-tip-actions">
                 <button type="button" class="btn btn-accent" id="btn-start-drawing">Start drawing</button>
                 <button type="button" class="btn btn-ghost" id="btn-got-it-tip">Got it</button>
@@ -353,6 +357,10 @@
               <label class="view3d-dims-toggle" title="Conceptual ~10 in open-web floor trusses (EXAMPLE ~16–24 in o.c.; default ON — hides finish deck so depth + webs read from interior)">
                 <input type="checkbox" id="view3d-floorframing-toggle" checked />
                 Floor framing
+              </label>
+              <label class="view3d-dims-toggle" title="Show / hide addition roof (session; default ON — uncheck to place counters from above)">
+                <input type="checkbox" id="view3d-roof-toggle" checked />
+                Roof
               </label>
               <label class="view3d-dims-toggle" title="Sun shadows (auto-off on narrow screens; warm interior fills stay on)">
                 <input type="checkbox" id="view3d-shadows-toggle" checked />
@@ -737,11 +745,11 @@
     }
   }
   </script>
-  <script src="walkthrough-data.js?v=ground1"></script>
-  <script src="guide-data.js?v=ground1"></script>
-  <script src="floorplan.js?v=ground1"></script>
-  <script src="wizard-data.js?v=ground1"></script>
-  <script type="module" src="view3d.js?v=ground1"></script>
-  <script src="app.js?v=ground1"></script>
+  <script src="walkthrough-data.js?v=interior1"></script>
+  <script src="guide-data.js?v=interior1"></script>
+  <script src="floorplan.js?v=interior1"></script>
+  <script src="wizard-data.js?v=interior1"></script>
+  <script type="module" src="view3d.js?v=interior1"></script>
+  <script src="app.js?v=interior1"></script>
 </body>
 </html>

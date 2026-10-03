@@ -271,7 +271,7 @@
 
 
   // ---- Fixtures palette chrome (v1) ----
-  const FIXTURE_TIP_SHOWN = { sink: false, outlet: false, cabinet: false };
+  const FIXTURE_TIP_SHOWN = { sink: false, outlet: false, cabinet: false, appliance: false };
 
   function syncFixtureSubtypeBar(tool, activeId) {
     const bar = document.getElementById('fixture-subtype-bar');
@@ -287,7 +287,7 @@
       return;
     }
     bar.hidden = false;
-    const titles = { cabinet: 'Cabinet', sink: 'Sink', outlet: 'Device', counter: 'Counter' };
+    const titles = { cabinet: 'Cabinet', sink: 'Sink', outlet: 'Device', counter: 'Counter', appliance: 'Appliance' };
     if (label) label.textContent = titles[tool] || 'Type';
     const cur = activeId || (floor.getActiveFixtureId && floor.getActiveFixtureId()) || opts[0];
     chips.innerHTML = '';
